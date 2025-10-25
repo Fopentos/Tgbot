@@ -38,12 +38,27 @@ SLOT_CONFIG = {
 
 # 🎮 КОНФИГУРАЦИЯ ИГР
 GAMES_CONFIG = {
-    "🎰": {"cost": 5, "type": "slots"},
-    "🎯": {"cost": 5, "type": "dart", "win": 6, "prize": 15},
-    "🎲": {"cost": 5, "type": "dice", "win": 6, "prize": 15},
-    "🎳": {"cost": 5, "type": "bowling", "win": 6, "prize": 15},
-    "⚽": {"cost": 5, "type": "football", "win": 5, "prize": 15},
-    "🏀": {"cost": 5, "type": "basketball", "win": 5, "prize": 15}
+    "🎰": {"cost": 5, "type": "slots", "win_messages": {
+        1: "🎉 ТРИ БАРА! Выигрыш: 15 звезд",
+        22: "🎉 ТРИ ВИШНИ! Выигрыш: 25 звезд", 
+        43: "🎉 ТРИ ЛИМОНА! Выигрыш: 50 звезд",
+        64: "🎰 ДЖЕКПОТ 777! Выигрыш: 100 звезд"
+    }},
+    "🎯": {"cost": 5, "type": "dart", "win": 6, "prize": 15, 
+           "win_message": "🎯 ПОПАДАНИЕ В ЦЕЛЬ! Выигрыш: 15 звезд",
+           "lose_message": "🎯 Мимо цели... Попробуй еще!"},
+    "🎲": {"cost": 5, "type": "dice", "win": 6, "prize": 15,
+           "win_message": "🎲 ВЫПАЛО 6! Выигрыш: 15 звезд", 
+           "lose_message": "🎲 Не повезло с числом..."},
+    "🎳": {"cost": 5, "type": "bowling", "win": 6, "prize": 15,
+           "win_message": "🎳 СТРАЙК! Выигрыш: 15 звезд",
+           "lose_message": "🎳 Не все кегли упали..."},
+    "⚽": {"cost": 5, "type": "football", "win": 5, "prize": 15,
+           "win_message": "⚽ ГОООЛ! Выигрыш: 15 звезд",
+           "lose_message": "⚽ Мяч мимо ворот..."},
+    "🏀": {"cost": 5, "type": "basketball", "win": 5, "prize": 15,
+           "win_message": "🏀 ПОПАДАНИЕ! Выигрыш: 15 звезд",
+           "lose_message": "🏀 Промах..."}
 }
 
 # 🗃️ БАЗА ДАННЫХ
@@ -283,7 +298,7 @@ async def handle_deposit_selection(update: Update, context: ContextTypes.DEFAULT
         payload=product_key,
         provider_token=PROVIDER_TOKEN,
         currency=product["currency"],
-        prices=[LabeledPrice(product["title"], product["price"])],  # УБРАЛ УМНОЖЕНИЕ НА 100
+        prices=[LabeledPrice(product["title"], product["price"])],
         start_parameter="nsource_casino"
     )
 
@@ -365,7 +380,9 @@ async def handle_game_selection(update: Update, context: ContextTypes.DEFAULT_TY
         return
     
     # СПИСАНИЕ СРЕДСТВ - ИСПРАВЛЕНО: всегда списываем для обычных пользователей
-    user_data[user_id]['game_balance'] -= GAME_COST
+    if not admin_mode.get(user_id, False):
+        user_data[user_id]['game_balance'] -= GAME_COST
+    
     user_data[user_id]['total_games'] += 1
     user_data[user_id]['last_activity'] = datetime.datetime.now().isoformat()
     
@@ -380,17 +397,22 @@ async def handle_game_selection(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data['expecting_dice'] = True
     context.user_data['last_game_type'] = game_type
     context.user_data['last_game_user_id'] = user_id
-    context.user_data['last_game_cost'] = GAME_COST
+    context.user_data['last_game_cost'] = GAME_COST if not admin_mode.get(user_id, False) else 0
     
     dice_message = await context.bot.send_dice(chat_id=query.message.chat_id, emoji=emoji)
     context.user_data['last_dice_message_id'] = dice_message.message_id
     
-    message_text = f"🎮 Игра запущена! {emoji}\n💸 Списано: {GAME_COST} звезд\n💰 Остаток: {user_data[user_id]['game_balance']} звезд"
+    message_text = f"🎮 Игра запущена! {emoji}\n"
+    if admin_mode.get(user_id, False):
+        message_text += "👑 Режим админа: бесплатно\n"
+    else:
+        message_text += f"💸 Списано: {GAME_COST} звезд\n"
+    message_text += f"💰 Остаток: {user_data[user_id]['game_balance']} звезд"
     
     await query.edit_message_text(message_text)
     save_data()
 
-# 🎰 ОБРАБОТКА DICE - УЛУЧШЕННАЯ
+# 🎰 ОБРАБОТКА DICE - УЛУЧШЕННАЯ С СООБЩЕНИЯМИ
 async def handle_dice_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     user_id = message.from_user.id
@@ -450,21 +472,15 @@ async def handle_dice_result(update: Update, context: ContextTypes.DEFAULT_TYPE)
             user_data[user_id]['total_wins'] += 1
             is_win = True
             
-            game_names = {
-                "dart": "🎯 ПОПАДАНИЕ В ЦЕЛЬ!",
-                "dice": "🎲 ВЫПАЛО 6!",
-                "bowling": "🎳 СТРАЙК!",
-                "football": "⚽ ГОООЛ!",
-                "basketball": "🏀 ПОПАДАНИЕ!"
-            }
-            
             result_text = (
-                f"🎉 {game_names[game_type]}\n\n"
-                f"💰 Выигрыш: {win_amount} звезд\n"
+                f"{game_config['win_message']}\n\n"
                 f"💎 Баланс: {user_data[user_id]['game_balance']} звезд"
             )
         else:
-            result_text = f"😢 Мимо...\n💎 Баланс: {user_data[user_id]['game_balance']} звезд"
+            result_text = (
+                f"{game_config['lose_message']}\n\n"
+                f"💎 Баланс: {user_data[user_id]['game_balance']} звезд"
+            )
     
     # Отправляем результат
     if result_text:
@@ -676,8 +692,12 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     callback_data = query.data
     
+    # Сначала обрабатываем play_games отдельно
+    if callback_data == 'play_games':
+        await play_games_callback(update, context)
+    
     # АДМИНСКИЕ КОМАНДЫ
-    if callback_data.startswith('admin_'):
+    elif callback_data.startswith('admin_'):
         if callback_data == 'admin_panel':
             await admin_panel(update, context)
         elif callback_data == 'admin_stats':
@@ -704,8 +724,6 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         await handle_game_selection(update, context)
     elif callback_data == 'deposit':
         await deposit_callback(update, context)
-    elif callback_data == 'play_games':
-        await play_games_callback(update, context)
     elif callback_data == 'back_to_profile':
         await back_to_profile_callback(update, context)
 
