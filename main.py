@@ -1,20 +1,14 @@
 import os
 import json
-import random
 import datetime
 from collections import defaultdict
-from telegram import Update, LabeledPrice, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters, PreCheckoutQueryHandler
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 from threading import Thread
 from flask import Flask
 
 # 🔧 КОНФИГУРАЦИЯ
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8378526693:AAFOwAb6pVp1GOE0tXZN4PDLFnD_TTT1djg")
-PROVIDER_TOKEN = os.environ.get("PROVIDER_TOKEN", "TEST_PROVIDER_TOKEN")
-ADMIN_CODE = os.environ.get("ADMIN_CODE", "1337")
-
-# 🎯 НАСТРОЙКИ ИГР
-GAME_COST = 0  # Бесплатно для тестирования
 
 # 🎰 УНИКАЛЬНЫЕ СООБЩЕНИЯ ДЛЯ КАЖДОЙ АНИМАЦИИ
 SLOT_MESSAGES = {
@@ -86,32 +80,24 @@ SLOT_MESSAGES = {
 
 # 🗃️ БАЗА ДАННЫХ ДЛЯ ИССЛЕДОВАНИЯ
 slot_research_data = {}
-user_data = defaultdict(lambda: {
-    'game_balance': 1000,
-    'total_games': 0,
-    'total_wins': 0,
-})
 
 # 👤 ОСНОВНЫЕ КОМАНДЫ
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🎰 РЕЖИМ ИССЛЕДОВАНИЯ СЛОТОВ\n\n"
-        "Каждой из 64 анимаций будет присвоен уникальный номер!\n\n"
+        "Просто отправь эмодзи 🎰 в чат (не как текст, а используя эмодзи-клавиатуру)\n\n"
         "Команды:\n"
         "/research - Показать все найденные значения\n"
         "/slot X - Информация о конкретном слоте (1-64)\n"
         "/test_slots - Начать тестирование\n\n"
-        "Отправь 🎰 чтобы определить номер анимации!"
+        "Бот автоматически определит номер анимации!"
     )
 
 async def test_slots(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Запуск тестирования слотов"""
-    user_id = update.effective_user.id
-    user_data[user_id]['game_balance'] = 1000
-    
     await update.message.reply_text(
         "🎰 ТЕСТИРОВАНИЕ АКТИВИРОВАНО\n\n"
-        "Отправляй 🎰 в чат - я буду показывать номер каждой анимации!\n"
+        "Отправляй 🎰 в чат (используй эмодзи-клавиатуру) - я буду показывать номер каждой анимации!\n"
         "Всего существует 64 возможных значения.\n\n"
         "После теста используй /research для просмотра статистики."
     )
@@ -119,7 +105,7 @@ async def test_slots(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def research_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать результаты исследования"""
     if not slot_research_data:
-        await update.message.reply_text("🔍 Данных пока нет. Сыграй в слоты!")
+        await update.message.reply_text("🔍 Данных пока нет. Отправь 🎰 в чат!")
         return
     
     research_text = "🎰 РЕЗУЛЬТАТЫ ИССЛЕДОВАНИЯ\n\n"
@@ -136,7 +122,7 @@ async def research_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 line += f"❓{j:02d} "
         research_text += line + "\n"
     
-    research_text += f"\n📋 Полный список: {sorted(slot_research_data.keys())}"
+    research_text += f"\n📋 Полный список найденных: {sorted(slot_research_data.keys())}"
     
     await update.message.reply_text(research_text)
 
@@ -156,12 +142,12 @@ async def slot_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             data = slot_research_data[slot_number]
             info_text = f"🎰 ИНФОРМАЦИЯ О СЛОТЕ #{slot_number}\n\n"
             info_text += f"📊 Выпадал раз: {data['count']}\n"
-            info_text += f"👥 Тестеров: {len(data['users'])}\n"
+            info_text += f"👥 Уникальных тестеров: {len(data['users'])}\n"
             info_text += f"📅 Первый раз: {data['first_seen'][:19]}\n"
             info_text += f"🎯 Диапазон: {get_slot_range(slot_number)}\n"
             
         else:
-            info_text = f"🎰 Слот #{slot_number} еще не найден!\nПродолжай тестировать 🎰"
+            info_text = f"🎰 Слот #{slot_number} еще не найден!\nОтправляй 🎰 в чат для тестирования"
             
         await update.message.reply_text(info_text)
         
@@ -188,29 +174,6 @@ def generate_unique_slot_message(slot_value):
     
     return f"{message}\n🔢 Номер значения: {slot_value}/64\n🎯 Диапазон: {get_slot_range(slot_value)}"
 
-# 🎮 СИСТЕМА ИГР - ТЕСТОВЫЙ РЕЖИМ
-async def handle_game_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    emoji = update.message.text
-    
-    if emoji != "🎰":
-        await update.message.reply_text("🎰 В этом режиме работают только слоты!")
-        return
-    
-    user_data[user_id]['total_games'] += 1
-    
-    context.user_data['expecting_dice'] = True
-    context.user_data['last_game_type'] = 'slots'
-    context.user_data['last_game_user_id'] = user_id
-    
-    dice_message = await context.bot.send_dice(chat_id=update.message.chat_id, emoji=emoji)
-    context.user_data['last_dice_message_id'] = dice_message.message_id
-    
-    await update.message.reply_text(
-        f"🔬 Тестовый бросок #{user_data[user_id]['total_games']}\n"
-        f"🎯 Определяю номер анимации..."
-    )
-
 # 🎰 ОБРАБОТКА DICE - УНИКАЛЬНЫЕ СООБЩЕНИЯ ДЛЯ КАЖДОГО ЗНАЧЕНИЯ
 async def handle_dice_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
@@ -219,15 +182,10 @@ async def handle_dice_result(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not message.dice:
         return
     
-    if not context.user_data.get('expecting_dice', False):
-        return
-    
-    if context.user_data.get('last_game_user_id') != user_id:
-        return
-    
     emoji = message.dice.emoji
     value = message.dice.value
     
+    # Обрабатываем только слоты (эмодзи 🎰)
     if emoji == "🎰":
         # СОХРАНЯЕМ ДАННЫЕ ИССЛЕДОВАНИЯ
         if value not in slot_research_data:
@@ -253,11 +211,6 @@ async def handle_dice_result(update: Update, context: ContextTypes.DEFAULT_TYPE)
         result_text += f"\n\n💡 Подробнее: /slot {value}"
         
         await message.reply_text(result_text)
-    
-    context.user_data.pop('expecting_dice', None)
-    context.user_data.pop('last_game_type', None)
-    context.user_data.pop('last_dice_message_id', None)
-    context.user_data.pop('last_game_user_id', None)
 
 # 🔄 ОБРАБОТЧИКИ КНОПОК
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -265,12 +218,10 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     callback_data = query.data
     
     if callback_data == 'test_slots':
-        user_id = query.from_user.id
-        user_data[user_id]['game_balance'] = 1000
-        
+        await query.answer()
         await query.edit_message_text(
             "🎰 РЕЖИМ ТЕСТИРОВАНИЯ АКТИВИРОВАН\n\n"
-            "Отправляй 🎰 в чат - я покажу номер каждой анимации!\n"
+            "Отправляй 🎰 в чат (используй эмодзи-клавиатуру) - я покажу номер каждой анимации!\n"
             "Всего 64 возможных значения."
         )
 
@@ -321,12 +272,11 @@ def main():
     # CALLBACK'И
     application.add_handler(CallbackQueryHandler(handle_callback_query))
     
-    # СООБЩЕНИЯ
-    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🎰)$"), handle_game_message))
+    # СООБЩЕНИЯ - ОБРАБАТЫВАЕМ DICE (анимации)
     application.add_handler(MessageHandler(filters.Dice.ALL, handle_dice_result))
     
     print("🎰 Slot Research Bot запущен!")
-    print("🔬 Каждой анимации будет присвоен уникальный номер!")
+    print("🔬 Бот будет реагировать на анимации 🎰")
     application.run_polling()
 
 if __name__ == '__main__':
