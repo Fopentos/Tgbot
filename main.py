@@ -16,7 +16,7 @@ ADMIN_CODE = os.environ.get("ADMIN_CODE", "1337")
 # 🎯 НАСТРОЙКИ ИГР
 GAME_COST = 5
 
-# 💰 ПАКЕТЫ ПОПОЛНЕНИЯ (1 реальная звезда = 1 игровая звезда) - ИСПРАВЛЕННЫЕ ЦЕНЫ
+# 💰 ПАКЕТЫ ПОПОЛНЕНИЯ (1 реальная звезда = 1 игровая звезда)
 PRODUCTS = {
     "pack_5": {"title": "5 Игровых звезд", "description": "Пополнение баланса на 5 игровых звезд", "price": 5, "currency": "XTR", "credits": 5},
     "pack_10": {"title": "10 Игровых звезд", "description": "Пополнение баланса на 10 игровых звезд", "price": 10, "currency": "XTR", "credits": 10},
@@ -364,7 +364,7 @@ async def handle_game_selection(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
     
-    # СПИСАНИЕ СРЕДСТВ
+    # СПИСАНИЕ СРЕДСТВ - ИСПРАВЛЕНО: всегда списываем для обычных пользователей
     user_data[user_id]['game_balance'] -= GAME_COST
     user_data[user_id]['total_games'] += 1
     user_data[user_id]['last_activity'] = datetime.datetime.now().isoformat()
@@ -380,6 +380,7 @@ async def handle_game_selection(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data['expecting_dice'] = True
     context.user_data['last_game_type'] = game_type
     context.user_data['last_game_user_id'] = user_id
+    context.user_data['last_game_cost'] = GAME_COST
     
     dice_message = await context.bot.send_dice(chat_id=query.message.chat_id, emoji=emoji)
     context.user_data['last_dice_message_id'] = dice_message.message_id
@@ -389,7 +390,7 @@ async def handle_game_selection(update: Update, context: ContextTypes.DEFAULT_TY
     await query.edit_message_text(message_text)
     save_data()
 
-# 🎰 ОБРАБОТКА DICE
+# 🎰 ОБРАБОТКА DICE - УЛУЧШЕННАЯ
 async def handle_dice_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     user_id = message.from_user.id
@@ -409,6 +410,8 @@ async def handle_dice_result(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_data[user_id]['last_activity'] = datetime.datetime.now().isoformat()
     
     result_text = ""
+    is_win = False
+    win_amount = 0
     
     # 🎰 ОБРАБОТКА СЛОТОВ
     if emoji == "🎰":
@@ -416,12 +419,14 @@ async def handle_dice_result(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         if value in SLOT_CONFIG:
             win_combo = SLOT_CONFIG[value]
-            user_data[user_id]['game_balance'] += win_combo["stars"]
+            win_amount = win_combo["stars"]
+            user_data[user_id]['game_balance'] += win_amount
             user_data[user_id]['total_wins'] += 1
+            is_win = True
             
             result_text = (
                 f"🎉 {win_combo['name']}!\n\n"
-                f"💰 Выигрыш: {win_combo['stars']} звезд\n"
+                f"💰 Выигрыш: {win_amount} звезд\n"
                 f"💎 Баланс: {user_data[user_id]['game_balance']} звезд"
             )
         else:
@@ -440,9 +445,10 @@ async def handle_dice_result(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 break
         
         if game_config and value == game_config["win"]:
-            base_prize = game_config["prize"]
-            user_data[user_id]['game_balance'] += base_prize
+            win_amount = game_config["prize"]
+            user_data[user_id]['game_balance'] += win_amount
             user_data[user_id]['total_wins'] += 1
+            is_win = True
             
             game_names = {
                 "dart": "🎯 ПОПАДАНИЕ В ЦЕЛЬ!",
@@ -454,7 +460,7 @@ async def handle_dice_result(update: Update, context: ContextTypes.DEFAULT_TYPE)
             
             result_text = (
                 f"🎉 {game_names[game_type]}\n\n"
-                f"💰 Выигрыш: {base_prize} звезд\n"
+                f"💰 Выигрыш: {win_amount} звезд\n"
                 f"💎 Баланс: {user_data[user_id]['game_balance']} звезд"
             )
         else:
@@ -479,6 +485,7 @@ async def handle_dice_result(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.user_data.pop('last_game_type', None)
     context.user_data.pop('last_dice_message_id', None)
     context.user_data.pop('last_game_user_id', None)
+    context.user_data.pop('last_game_cost', None)
     
     save_data()
 
@@ -619,6 +626,9 @@ async def admin_play_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton("🎰 Слоты (БЕСПЛАТНО)", callback_data="admin_play_slots")],
         [InlineKeyboardButton("🎯 Дартс (БЕСПЛАТНО)", callback_data="admin_play_dart")],
         [InlineKeyboardButton("🎲 Кубик (БЕСПЛАТНО)", callback_data="admin_play_dice")],
+        [InlineKeyboardButton("🎳 Боулинг (БЕСПЛАТНО)", callback_data="admin_play_bowling")],
+        [InlineKeyboardButton("⚽ Футбол (БЕСПЛАТНО)", callback_data="admin_play_football")],
+        [InlineKeyboardButton("🏀 Баскетбол (БЕСПЛАТНО)", callback_data="admin_play_basketball")],
         [InlineKeyboardButton("🔙 Назад", callback_data="admin_back")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -650,6 +660,7 @@ async def admin_handle_game_selection(update: Update, context: ContextTypes.DEFA
     context.user_data['expecting_dice'] = True
     context.user_data['last_game_type'] = game_type
     context.user_data['last_game_user_id'] = user_id
+    context.user_data['last_game_cost'] = 0  # Бесплатно для админа
     
     dice_message = await context.bot.send_dice(chat_id=query.message.chat_id, emoji=emoji)
     context.user_data['last_dice_message_id'] = dice_message.message_id
