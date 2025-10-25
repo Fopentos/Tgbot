@@ -16,7 +16,7 @@ ADMIN_CODE = os.environ.get("ADMIN_CODE", "1337")
 # 🎯 НАСТРОЙКИ ИГР
 GAME_COST = 5
 
-# 💰 ПАКЕТЫ ПОПОЛНЕНИЯ (1 реальная звезда = 1 игровая звезда)
+# 💰 ПАКЕТЫ ПОПОЛНЕНИЯ (1 реальная звезда = 1 игровая звезд)
 PRODUCTS = {
     "pack_5": {"title": "5 Игровых звезд", "description": "Пополнение баланса на 5 игровых звезд", "price": 5, "currency": "XTR", "credits": 5},
     "pack_10": {"title": "10 Игровых звезд", "description": "Пополнение баланса на 10 игровых звезд", "price": 10, "currency": "XTR", "credits": 10},
@@ -505,6 +505,54 @@ async def handle_dice_result(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     save_data()
 
+# 🎮 ОБРАБОТЧИК СООБЩЕНИЙ С ЭМОДЗИ - ИСПРАВЛЕННЫЙ!
+async def handle_game_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    emoji = update.message.text
+    
+    if emoji not in GAMES_CONFIG:
+        return
+    
+    # ПРОВЕРКА БАЛАНСА
+    if user_data[user_id]['game_balance'] < GAME_COST:
+        await update.message.reply_text(
+            "❌ Недостаточно средств!\n\n"
+            f"💰 Ваш баланс: {user_data[user_id]['game_balance']} звезд\n"
+            f"🎯 Требуется: {GAME_COST} звезд\n\n"
+            "💳 Пополните баланс чтобы играть!",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("💰 Пополнить", callback_data="deposit")]
+            ])
+        )
+        return
+    
+    # СПИСАНИЕ СРЕДСТВ - ИСПРАВЛЕНО: всегда списываем для обычных пользователей
+    if not admin_mode.get(user_id, False):
+        user_data[user_id]['game_balance'] -= GAME_COST
+    
+    user_data[user_id]['total_games'] += 1
+    user_data[user_id]['last_activity'] = datetime.datetime.now().isoformat()
+    
+    # Сохраняем информацию об игре
+    game_type = GAMES_CONFIG[emoji]["type"]
+    context.user_data['expecting_dice'] = True
+    context.user_data['last_game_type'] = game_type
+    context.user_data['last_game_user_id'] = user_id
+    context.user_data['last_game_cost'] = GAME_COST if not admin_mode.get(user_id, False) else 0
+    
+    dice_message = await context.bot.send_dice(chat_id=update.message.chat_id, emoji=emoji)
+    context.user_data['last_dice_message_id'] = dice_message.message_id
+    
+    message_text = f"🎮 Игра запущена! {emoji}\n"
+    if admin_mode.get(user_id, False):
+        message_text += "👑 Режим админа: бесплатно\n"
+    else:
+        message_text += f"💸 Списано: {GAME_COST} звезд\n"
+    message_text += f"💰 Остаток: {user_data[user_id]['game_balance']} звезд"
+    
+    await update.message.reply_text(message_text)
+    save_data()
+
 # 👑 УЛУЧШЕННАЯ АДМИН СИСТЕМА
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -800,6 +848,7 @@ def main():
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
     
     # СООБЩЕНИЯ
+    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🎰|🎯|🎲|🎳|⚽|🏀)$"), handle_game_message))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_message))
     application.add_handler(MessageHandler(filters.Dice.ALL, handle_dice_result))
     
