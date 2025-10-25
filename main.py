@@ -1,222 +1,520 @@
 import os
 import json
+import random
 import datetime
 from collections import defaultdict
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
+from telegram import Update, LabeledPrice, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters, PreCheckoutQueryHandler
 from threading import Thread
 from flask import Flask
 
 # 🔧 КОНФИГУРАЦИЯ
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8378526693:AAFOwAb6pVp1GOE0tXZN4PDLFnD_TTT1djg")
+PROVIDER_TOKEN = os.environ.get("PROVIDER_TOKEN", "TEST_PROVIDER_TOKEN")
+ADMIN_CODE = os.environ.get("ADMIN_CODE", "1337")
 
-# 🎮 КОНФИГУРАЦИЯ ИССЛЕДОВАНИЯ ВСЕХ ИГР
-GAMES_RESEARCH = {
+# 🎯 НАСТРОЙКИ ИГР
+GAME_COST = 5
+
+# 💰 ПАКЕТЫ ПОПОЛНЕНИЯ (1 реальная звезда = 1 игровая звезда)
+PRODUCTS = {
+    "pack_5": {"title": "5 Игровых звезд", "description": "Пополнение баланса на 5 игровых звезд", "price": 5, "currency": "XTR", "credits": 5},
+    "pack_10": {"title": "10 Игровых звезд", "description": "Пополнение баланса на 10 игровых звезд", "price": 10, "currency": "XTR", "credits": 10},
+    "pack_25": {"title": "25 Игровых звезд", "description": "Пополнение баланса на 25 игровых звезд", "price": 25, "currency": "XTR", "credits": 25},
+    "pack_50": {"title": "50 Игровых звезд", "description": "Пополнение баланса на 50 игровых звезд", "price": 50, "currency": "XTR", "credits": 50},
+    "pack_100": {"title": "100 Игровых звезд", "description": "Пополнение баланса на 100 игровых звезд", "price": 100, "currency": "XTR", "credits": 100},
+    "pack_250": {"title": "250 Игровых звезд", "description": "Пополнение баланса на 250 игровых звезд", "price": 250, "currency": "XTR", "credits": 250},
+    "pack_500": {"title": "500 Игровых звезд", "description": "Пополнение баланса на 500 игровых звезд", "price": 500, "currency": "XTR", "credits": 500},
+    "pack_1000": {"title": "1000 Игровых звезд", "description": "Пополнение баланса на 1000 игровых звезд", "price": 1000, "currency": "XTR", "credits": 1000}
+}
+
+# 🎮 ПОЛНАЯ КОНФИГУРАЦИЯ ВСЕХ ИГР С ВЫИГРЫШНЫМИ ЗНАЧЕНИЯМИ
+GAMES_CONFIG = {
+    "🎰": {
+        "cost": 5,
+        "values": {
+            # СЛОТЫ - 64 значения, 4 выигрышных
+            1: {"win": True, "prize": 15, "message": "🎰 ТРИ БАРА! Выигрыш: 15 звезд"},
+            2: {"win": False, "prize": 0, "message": "🎰 Комбинация #2 - проигрыш"},
+            3: {"win": False, "prize": 0, "message": "🎰 Комбинация #3 - проигрыш"},
+            4: {"win": False, "prize": 0, "message": "🎰 Комбинация #4 - проигрыш"},
+            5: {"win": False, "prize": 0, "message": "🎰 Комбинация #5 - проигрыш"},
+            6: {"win": False, "prize": 0, "message": "🎰 Комбинация #6 - проигрыш"},
+            7: {"win": False, "prize": 0, "message": "🎰 Комбинация #7 - проигрыш"},
+            8: {"win": False, "prize": 0, "message": "🎰 Комбинация #8 - проигрыш"},
+            9: {"win": False, "prize": 0, "message": "🎰 Комбинация #9 - проигрыш"},
+            10: {"win": False, "prize": 0, "message": "🎰 Комбинация #10 - проигрыш"},
+            11: {"win": False, "prize": 0, "message": "🎰 Комбинация #11 - проигрыш"},
+            12: {"win": False, "prize": 0, "message": "🎰 Комбинация #12 - проигрыш"},
+            13: {"win": False, "prize": 0, "message": "🎰 Комбинация #13 - проигрыш"},
+            14: {"win": False, "prize": 0, "message": "🎰 Комбинация #14 - проигрыш"},
+            15: {"win": False, "prize": 0, "message": "🎰 Комбинация #15 - проигрыш"},
+            16: {"win": False, "prize": 0, "message": "🎰 Комбинация #16 - проигрыш"},
+            17: {"win": False, "prize": 0, "message": "🎰 Комбинация #17 - проигрыш"},
+            18: {"win": False, "prize": 0, "message": "🎰 Комбинация #18 - проигрыш"},
+            19: {"win": False, "prize": 0, "message": "🎰 Комбинация #19 - проигрыш"},
+            20: {"win": False, "prize": 0, "message": "🎰 Комбинация #20 - проигрыш"},
+            21: {"win": False, "prize": 0, "message": "🎰 Комбинация #21 - проигрыш"},
+            22: {"win": True, "prize": 25, "message": "🎰 ТРИ ВИШНИ! Выигрыш: 25 звезд"},
+            23: {"win": False, "prize": 0, "message": "🎰 Комбинация #23 - проигрыш"},
+            24: {"win": False, "prize": 0, "message": "🎰 Комбинация #24 - проигрыш"},
+            25: {"win": False, "prize": 0, "message": "🎰 Комбинация #25 - проигрыш"},
+            26: {"win": False, "prize": 0, "message": "🎰 Комбинация #26 - проигрыш"},
+            27: {"win": False, "prize": 0, "message": "🎰 Комбинация #27 - проигрыш"},
+            28: {"win": False, "prize": 0, "message": "🎰 Комбинация #28 - проигрыш"},
+            29: {"win": False, "prize": 0, "message": "🎰 Комбинация #29 - проигрыш"},
+            30: {"win": False, "prize": 0, "message": "🎰 Комбинация #30 - проигрыш"},
+            31: {"win": False, "prize": 0, "message": "🎰 Комбинация #31 - проигрыш"},
+            32: {"win": False, "prize": 0, "message": "🎰 Комбинация #32 - проигрыш"},
+            33: {"win": False, "prize": 0, "message": "🎰 Комбинация #33 - проигрыш"},
+            34: {"win": False, "prize": 0, "message": "🎰 Комбинация #34 - проигрыш"},
+            35: {"win": False, "prize": 0, "message": "🎰 Комбинация #35 - проигрыш"},
+            36: {"win": False, "prize": 0, "message": "🎰 Комбинация #36 - проигрыш"},
+            37: {"win": False, "prize": 0, "message": "🎰 Комбинация #37 - проигрыш"},
+            38: {"win": False, "prize": 0, "message": "🎰 Комбинация #38 - проигрыш"},
+            39: {"win": False, "prize": 0, "message": "🎰 Комбинация #39 - проигрыш"},
+            40: {"win": False, "prize": 0, "message": "🎰 Комбинация #40 - проигрыш"},
+            41: {"win": False, "prize": 0, "message": "🎰 Комбинация #41 - проигрыш"},
+            42: {"win": False, "prize": 0, "message": "🎰 Комбинация #42 - проигрыш"},
+            43: {"win": True, "prize": 50, "message": "🎰 ТРИ ЛИМОНА! Выигрыш: 50 звезд"},
+            44: {"win": False, "prize": 0, "message": "🎰 Комбинация #44 - проигрыш"},
+            45: {"win": False, "prize": 0, "message": "🎰 Комбинация #45 - проигрыш"},
+            46: {"win": False, "prize": 0, "message": "🎰 Комбинация #46 - проигрыш"},
+            47: {"win": False, "prize": 0, "message": "🎰 Комбинация #47 - проигрыш"},
+            48: {"win": False, "prize": 0, "message": "🎰 Комбинация #48 - проигрыш"},
+            49: {"win": False, "prize": 0, "message": "🎰 Комбинация #49 - проигрыш"},
+            50: {"win": False, "prize": 0, "message": "🎰 Комбинация #50 - проигрыш"},
+            51: {"win": False, "prize": 0, "message": "🎰 Комбинация #51 - проигрыш"},
+            52: {"win": False, "prize": 0, "message": "🎰 Комбинация #52 - проигрыш"},
+            53: {"win": False, "prize": 0, "message": "🎰 Комбинация #53 - проигрыш"},
+            54: {"win": False, "prize": 0, "message": "🎰 Комбинация #54 - проигрыш"},
+            55: {"win": False, "prize": 0, "message": "🎰 Комбинация #55 - проигрыш"},
+            56: {"win": False, "prize": 0, "message": "🎰 Комбинация #56 - проигрыш"},
+            57: {"win": False, "prize": 0, "message": "🎰 Комбинация #57 - проигрыш"},
+            58: {"win": False, "prize": 0, "message": "🎰 Комбинация #58 - проигрыш"},
+            59: {"win": False, "prize": 0, "message": "🎰 Комбинация #59 - проигрыш"},
+            60: {"win": False, "prize": 0, "message": "🎰 Комбинация #60 - проигрыш"},
+            61: {"win": False, "prize": 0, "message": "🎰 Комбинация #61 - проигрыш"},
+            62: {"win": False, "prize": 0, "message": "🎰 Комбинация #62 - проигрыш"},
+            63: {"win": False, "prize": 0, "message": "🎰 Комбинация #63 - проигрыш"},
+            64: {"win": True, "prize": 100, "message": "🎰 ДЖЕКПОТ 777! Выигрыш: 100 звезд"}
+        }
+    },
     "🎯": {
-        "name": "Дартс",
-        "values_range": 6,
-        "research_data": {},
-        "messages": {
-            1: "🎯 АНИМАЦИЯ #1 - Мимо мишени!",
-            2: "🎯 АНИМАЦИЯ #2 - Попадание в край!",
-            3: "🎯 АНИМАЦИЯ #3 - Близко к центру!",
-            4: "🎯 АНИМАЦИЯ #4 - Хороший бросок!",
-            5: "🎯 АНИМАЦИЯ #5 - Почти в яблочко!",
-            6: "🎯 АНИМАЦИЯ #6 - ПОПАДАНИЕ В ЦЕЛЬ!"
+        "cost": 5,
+        "values": {
+            # ДАРТС - 6 значений, 1 выигрышное (6)
+            1: {"win": False, "prize": 0, "message": "🎯 - проигрыш"},
+            2: {"win": False, "prize": 0, "message": "🎯 - проигрыш"},
+            3: {"win": False, "prize": 0, "message": "🎯 - проигрыш"},
+            4: {"win": False, "prize": 0, "message": "🎯 - проигрыш"},
+            5: {"win": False, "prize": 0, "message": "🎯 - проигрыш"},
+            6: {"win": True, "prize": 15, "message": "🎯 - ПОПАДАНИЕ В ЦЕЛЬ! Выигрыш: 15 звезд"}
         }
     },
     "🎲": {
-        "name": "Кости", 
-        "values_range": 6,
-        "research_data": {},
-        "messages": {
-            1: "🎲 АНИМАЦИЯ #1 - Выпала 1!",
-            2: "🎲 АНИМАЦИЯ #2 - Выпала 2!",
-            3: "🎲 АНИМАЦИЯ #3 - Выпала 3!",
-            4: "🎲 АНИМАЦИЯ #4 - Выпала 4!",
-            5: "🎲 АНИМАЦИЯ #5 - Выпала 5!",
-            6: "🎲 АНИМАЦИЯ #6 - Выпала 6!"
+        "cost": 5,
+        "values": {
+            # КОСТИ - 6 значений, 1 выигрышное (6)
+            1: {"win": False, "prize": 0, "message": "🎲 - проигрыш"},
+            2: {"win": False, "prize": 0, "message": "🎲 - проигрыш"},
+            3: {"win": False, "prize": 0, "message": "🎲 - проигрыш"},
+            4: {"win": False, "prize": 0, "message": "🎲 - проигрыш"},
+            5: {"win": False, "prize": 0, "message": "🎲 - проигрыш"},
+            6: {"win": True, "prize": 15, "message": "🎲 - ВЫПАЛО 6! Выигрыш: 15 звезд"}
         }
     },
     "🎳": {
-        "name": "Боулинг",
-        "values_range": 6,
-        "research_data": {},
-        "messages": {
-            1: "🎳 АНИМАЦИЯ #1 - 1 кегля!",
-            2: "🎳 АНИМАЦИЯ #2 - 2 кегли!",
-            3: "🎳 АНИМАЦИЯ #3 - 3 кегли!",
-            4: "🎳 АНИМАЦИЯ #4 - 4 кегли!",
-            5: "🎳 АНИМАЦИЯ #5 - 5 кеглей!",
-            6: "🎳 АНИМАЦИЯ #6 - СТРАЙК!"
+        "cost": 5,
+        "values": {
+            # БОУЛИНГ - 6 значений, 1 выигрышное (6)
+            1: {"win": False, "prize": 0, "message": "🎳 - проигрыш"},
+            2: {"win": False, "prize": 0, "message": "🎳 - проигрыш"},
+            3: {"win": False, "prize": 0, "message": "🎳 - проигрыш"},
+            4: {"win": False, "prize": 0, "message": "🎳 - проигрыш"},
+            5: {"win": False, "prize": 0, "message": "🎳 - проигрыш"},
+            6: {"win": True, "prize": 15, "message": "🎳 - СТРАЙК! Выигрыш: 15 звезд"}
         }
     },
     "⚽": {
-        "name": "Футбол",
-        "values_range": 5,
-        "research_data": {},
-        "messages": {
-            1: "⚽ АНИМАЦИЯ #1 - Мяч в аут!",
-            2: "⚽ АНИМАЦИЯ #2 - Удар по штанге!",
-            3: "⚽ АНИМАЦИЯ #3 - Блок защитника!",
-            4: "⚽ АНИМАЦИЯ #4 - Сейв вратаря!",
-            5: "⚽ АНИМАЦИЯ #5 - ГОООЛ!"
+        "cost": 5,
+        "values": {
+            # ФУТБОЛ - 5 значений, 1 выигрышное (5)
+            1: {"win": False, "prize": 0, "message": "⚽ - проигрыш"},
+            2: {"win": False, "prize": 0, "message": "⚽ - проигрыш"},
+            3: {"win": False, "prize": 0, "message": "⚽ - проигрыш"},
+            4: {"win": False, "prize": 0, "message": "⚽ - проигрыш"},
+            5: {"win": True, "prize": 15, "message": "⚽ - ГОООЛ! Выигрыш: 15 звезд"}
         }
     },
     "🏀": {
-        "name": "Баскетбол",
-        "values_range": 5, 
-        "research_data": {},
-        "messages": {
-            1: "🏀 АНИМАЦИЯ #1 - Промах!",
-            2: "🏀 АНИМАЦИЯ #2 - Задел обод!",
-            3: "🏀 АНИМАЦИЯ #3 - Колебался и вылетел!",
-            4: "🏀 АНИМАЦИЯ #4 - Почти попал!",
-            5: "🏀 АНИМАЦИЯ #5 - ПОПАДАНИЕ!"
+        "cost": 5,
+        "values": {
+            # БАСКЕТБОЛ - 5 значений, 1 выигрышное (5)
+            1: {"win": False, "prize": 0, "message": "🏀 - проигрыш"},
+            2: {"win": False, "prize": 0, "message": "🏀 - проигрыш"},
+            3: {"win": False, "prize": 0, "message": "🏀 - проигрыш"},
+            4: {"win": False, "prize": 0, "message": "🏀 - проигрыш"},
+            5: {"win": True, "prize": 15, "message": "🏀 - ПОПАДАНИЕ! Выигрыш: 15 звезд"}
         }
     }
 }
 
+# 🗃️ БАЗА ДАННЫХ
+user_data = defaultdict(lambda: {
+    'game_balance': 0,
+    'total_games': 0,
+    'total_wins': 0,
+    'total_deposited': 0,
+    'real_money_spent': 0,
+    'registration_date': datetime.datetime.now().isoformat(),
+    'last_activity': datetime.datetime.now().isoformat()
+})
+
+user_activity = defaultdict(lambda: {
+    'last_play_date': None,
+    'consecutive_days': 0,
+    'plays_today': 0,
+    'weekly_reward_claimed': False
+})
+
+consecutive_wins = defaultdict(int)
+admin_mode = defaultdict(bool)
+
+# 💾 СОХРАНЕНИЕ ДАННЫХ
+def save_data():
+    try:
+        data = {
+            'user_data': dict(user_data),
+            'user_activity': dict(user_activity),
+            'consecutive_wins': dict(consecutive_wins),
+            'admin_mode': dict(admin_mode)
+        }
+        with open('data.json', 'w') as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"Ошибка сохранения: {e}")
+
+def load_data():
+    try:
+        with open('data.json', 'r') as f:
+            data = json.load(f)
+            user_data.update(data.get('user_data', {}))
+            user_activity.update(data.get('user_activity', {}))
+            consecutive_wins.update(data.get('consecutive_wins', {}))
+            admin_mode.update(data.get('admin_mode', {}))
+    except FileNotFoundError:
+        pass
+
+# 🎁 СИСТЕМА АКТИВНОСТИ
+WEEKLY_REWARDS = [15, 25, 50]
+
+def update_daily_activity(user_id: int):
+    today = datetime.datetime.now().date()
+    activity = user_activity[user_id]
+    
+    if activity['last_play_date'] != today:
+        if activity['last_play_date'] and activity['plays_today'] >= 3:
+            activity['consecutive_days'] += 1
+        elif activity['last_play_date'] and (today - activity['last_play_date']).days > 1:
+            activity['consecutive_days'] = 0
+        
+        activity['plays_today'] = 0
+        activity['last_play_date'] = today
+    
+    activity['plays_today'] += 1
+    
+    if (activity['consecutive_days'] >= 7 and 
+        activity['plays_today'] >= 3 and 
+        not activity['weekly_reward_claimed']):
+        
+        reward = random.choice(WEEKLY_REWARDS)
+        activity['consecutive_days'] = 0
+        activity['weekly_reward_claimed'] = True
+        return reward
+    
+    return None
+
 # 👤 ОСНОВНЫЕ КОМАНДЫ
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🎮 РЕЖИМ ИССЛЕДОВАНИЯ ВСЕХ ИГР\n\n"
-        "Просто отправь эмодзи игры в чат:\n"
-        "🎯 Дартс (6 значений)\n"
-        "🎲 Кости (6 значений)\n" 
-        "🎳 Боулинг (6 значений)\n"
-        "⚽ Футбол (5 значений)\n"
-        "🏀 Баскетбол (5 значений)\n\n"
-        "Команды:\n"
-        "/research - Показать все найденные значения\n"
-        "/game_stats - Статистика по играм\n"
-        "/test_all - Начать тестирование всех игр\n\n"
-        "Бот определит номер каждой анимации!"
+    welcome_text = """
+🎰 NSource Casino
+
+Добро пожаловать в казино!
+
+Доступные игры (5 звезд за игру):
+🎰 Слоты - 64 комбинации, 4 выигрышных (15-100 звезд)
+🎯 Дартс - победа на 6 (15 звезд)
+🎲 Кубик - победа на 6 (15 звезд)
+🎳 Боулинг - победа на 6 (15 звезд)
+⚽ Футбол - победа на 5 (15 звезд)
+🏀 Баскетбол - победа на 5 (15 звезд)
+
+💰 Пополнение: 1:1
+1 реальная звезда = 1 игровая звезда
+
+🎁 Система активности:
+Играй 3+ раза в день 7 дней подряд = случайный подарок (15-50 звезд)
+
+Команды:
+/profile - Личный кабинет
+/deposit - Пополнить баланс  
+/activity - Моя активность
+
+Нажми "🎮 Играть" чтобы начать!
+    """
+    
+    await update.message.reply_text(welcome_text)
+
+async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    user_id = user.id
+    data = user_data[user_id]
+    
+    win_rate = (data['total_wins'] / data['total_games'] * 100) if data['total_games'] > 0 else 0
+    
+    profile_text = f"""
+📊 Личный кабинет
+
+👤 Имя: {user.first_name}
+🆔 ID: {user_id}
+📅 Регистрация: {data['registration_date'][:10]}
+
+💎 Статистика:
+💰 Баланс: {data['game_balance']} звезд
+🎮 Всего игр: {data['total_games']}
+🏆 Побед: {data['total_wins']}
+📈 Винрейт: {win_rate:.1f}%
+💳 Пополнено: {data['total_deposited']} звезд
+    """
+    
+    keyboard = [
+        [InlineKeyboardButton("💰 Пополнить баланс", callback_data="deposit")],
+        [InlineKeyboardButton("🎮 Играть", callback_data="play_games")]
+    ]
+    
+    if admin_mode.get(user_id, False):
+        keyboard.append([InlineKeyboardButton("👑 Админ панель", callback_data="admin_panel")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if update.callback_query:
+        await update.callback_query.edit_message_text(profile_text, reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(profile_text, reply_markup=reply_markup)
+
+async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /deposit"""
+    user_id = update.effective_user.id
+    data = user_data[user_id]
+    
+    deposit_text = f"""
+💰 Пополнение баланса
+
+💎 Текущий баланс: {data['game_balance']} звезд
+
+🎯 Выберите пакет пополнения:
+💫 1 реальная звезда = 1 игровая звезда
+    """
+    
+    keyboard = []
+    for product_key, product in PRODUCTS.items():
+        keyboard.append([
+            InlineKeyboardButton(
+                f"{product['title']} - {product['price']} Stars", 
+                callback_data=f"buy_{product_key}"
+            )
+        ])
+    
+    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_profile")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(deposit_text, reply_markup=reply_markup)
+
+async def activity_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /activity"""
+    user_id = update.effective_user.id
+    activity_data = user_activity[user_id]
+    
+    today = datetime.datetime.now().date()
+    plays_remaining = max(0, 3 - activity_data['plays_today'])
+    
+    activity_text = f"""
+📊 Ваша активность
+
+🎮 Сыграно сегодня: {activity_data['plays_today']}/3
+📅 Последовательных дней: {activity_data['consecutive_days']}/7
+⏳ Осталось игр для зачета: {plays_remaining}
+
+🎁 Играйте 3+ раза в день 7 дней подряд для получения бонуса!
+    """
+    
+    if activity_data['weekly_reward_claimed']:
+        activity_text += "\n✅ Еженедельная награда уже получена!"
+    
+    await update.message.reply_text(activity_text)
+
+# 💳 СИСТЕМА ПОПОЛНЕНИЯ
+async def deposit_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    current_balance = user_data[user_id]['game_balance']
+    
+    deposit_text = f"""
+💰 Пополнение баланса
+
+💎 Текущий баланс: {current_balance} звезд
+
+🎯 Выберите пакет пополнения:
+💫 1 реальная звезда = 1 игровая звезда
+    """
+    
+    keyboard = []
+    for product_key, product in PRODUCTS.items():
+        keyboard.append([
+            InlineKeyboardButton(
+                f"{product['title']} - {product['price']} Stars", 
+                callback_data=f"buy_{product_key}"
+            )
+        ])
+    
+    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_profile")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(deposit_text, reply_markup=reply_markup)
+
+async def handle_deposit_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    product_key = query.data.replace("buy_", "")
+    product = PRODUCTS[product_key]
+    
+    # ИСПРАВЛЕННАЯ ЦЕНА - без умножения на 100
+    await context.bot.send_invoice(
+        chat_id=query.message.chat_id,
+        title=product["title"],
+        description=product["description"],
+        payload=product_key,
+        provider_token=PROVIDER_TOKEN,
+        currency=product["currency"],
+        prices=[LabeledPrice(product["title"], product["price"])],
+        start_parameter="nsource_casino"
     )
 
-async def test_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Запуск тестирования всех игр"""
+# 💰 ОБРАБОТКА ПЛАТЕЖЕЙ
+async def pre_checkout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.pre_checkout_query
+    await query.answer(ok=True)
+
+async def successful_payment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    payment = update.message.successful_payment
+    user_id = update.effective_user.id
+    product_key = payment.invoice_payload
+    product = PRODUCTS[product_key]
+    
+    user_data[user_id]['game_balance'] += product["credits"]
+    user_data[user_id]['total_deposited'] += product["credits"]
+    user_data[user_id]['real_money_spent'] += product["price"]
+    
+    save_data()
+    
     await update.message.reply_text(
-        "🎮 ТЕСТИРОВАНИЕ ВСЕХ ИГР АКТИВИРОВАНО\n\n"
-        "Отправляй эмодзи игр в чат:\n"
-        "🎯 Дартс - 6 возможных значений\n"
-        "🎲 Кости - 6 возможных значений\n"
-        "🎳 Боулинг - 6 возможных значений\n"
-        "⚽ Футбол - 5 возможных значений\n"
-        "🏀 Баскетбол - 5 возможных значений\n\n"
-        "После теста используй /research для просмотра статистики."
+        f"✅ Платеж успешен!\n\n"
+        f"💳 Оплачено: {product['price']} Stars\n"
+        f"💎 Зачислено: {product['credits']} игровых звезд\n"
+        f"💰 Баланс: {user_data[user_id]['game_balance']} звезд\n\n"
+        f"🎮 Приятной игры!"
     )
 
-async def research_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать результаты исследования всех игр"""
-    research_text = "🎮 РЕЗУЛЬТАТЫ ИССЛЕДОВАНИЯ ВСЕХ ИГР\n\n"
+# 🎮 СИСТЕМА ИГР
+async def play_games_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
     
-    for emoji, game_data in GAMES_RESEARCH.items():
-        research_data = game_data["research_data"]
-        found_count = len(research_data)
-        total_count = game_data["values_range"]
-        
-        research_text += f"{emoji} {game_data['name']}: {found_count}/{total_count} значений\n"
-        
-        # Показываем найденные значения
-        if research_data:
-            values_line = ""
-            for value in range(1, total_count + 1):
-                if value in research_data:
-                    count = research_data[value]['count']
-                    values_line += f"{value}({count}) "
-                else:
-                    values_line += f"❓{value} "
-            research_text += values_line + "\n\n"
-        else:
-            research_text += "❓ Еще не найдено\n\n"
+    user_id = query.from_user.id
+    balance = user_data[user_id]['game_balance']
     
-    await update.message.reply_text(research_text)
+    games_text = f"""
+🎮 Выбор игры
 
-async def game_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Детальная статистика по играм"""
-    stats_text = "📊 ДЕТАЛЬНАЯ СТАТИСТИКА ПО ИГРАМ\n\n"
-    
-    for emoji, game_data in GAMES_RESEARCH.items():
-        research_data = game_data["research_data"]
-        found_count = len(research_data)
-        total_count = game_data["values_range"]
-        
-        stats_text += f"{emoji} {game_data['name']}:\n"
-        stats_text += f"📈 Найдено: {found_count}/{total_count}\n"
-        
-        if research_data:
-            # Общее количество бросков
-            total_throws = sum(data['count'] for data in research_data.values())
-            # Количество уникальных тестеров
-            all_users = set()
-            for data in research_data.values():
-                all_users.update(data['users'])
-            
-            stats_text += f"🎮 Всего бросков: {total_throws}\n"
-            stats_text += f"👥 Уникальных тестеров: {len(all_users)}\n"
-            
-            # Самые частые значения
-            if research_data:
-                most_common = max(research_data.items(), key=lambda x: x[1]['count'])
-                stats_text += f"🏆 Чаще всего: #{most_common[0]} ({most_common[1]['count']} раз)\n"
-        else:
-            stats_text += "📊 Данных пока нет\n"
-        
-        stats_text += "\n"
-    
-    await update.message.reply_text(stats_text)
+💎 Баланс: {balance} звезд
+🎯 Стоимость игры: 5 звезд
 
-async def game_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Информация о конкретной игре"""
-    if not context.args:
-        await update.message.reply_text(
-            "Использование: /game_info <эмодзи>\n\n"
-            "Примеры:\n"
-            "/game_info 🎯 - информация о дартсе\n"
-            "/game_info 🎲 - информация о костях\n"
-            "/game_info 🎳 - информация о боулинге\n" 
-            "/game_info ⚽ - информация о футболе\n"
-            "/game_info 🏀 - информация о баскетболе"
+Выберите игру:
+    """
+    
+    keyboard = [
+        [InlineKeyboardButton("🎰 Слоты (5 звезд)", callback_data="play_slots")],
+        [InlineKeyboardButton("🎯 Дартс (5 звезд)", callback_data="play_dart")],
+        [InlineKeyboardButton("🎲 Кубик (5 звезд)", callback_data="play_dice")],
+        [InlineKeyboardButton("🎳 Боулинг (5 звезд)", callback_data="play_bowling")],
+        [InlineKeyboardButton("⚽ Футбол (5 звезд)", callback_data="play_football")],
+        [InlineKeyboardButton("🏀 Баскетбол (5 звезд)", callback_data="play_basketball")],
+        [InlineKeyboardButton("💰 Пополнить баланс", callback_data="deposit")],
+        [InlineKeyboardButton("📊 Личный кабинет", callback_data="back_to_profile")]
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(games_text, reply_markup=reply_markup)
+
+async def handle_game_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    game_type = query.data.replace("play_", "")
+    
+    # ПРОВЕРКА БАЛАНСА
+    if user_data[user_id]['game_balance'] < GAME_COST:
+        await query.edit_message_text(
+            "❌ Недостаточно средств!\n\n"
+            f"💰 Ваш баланс: {user_data[user_id]['game_balance']} звезд\n"
+            f"🎯 Требуется: {GAME_COST} звезд\n\n"
+            "💳 Пополните баланс чтобы играть!",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("💰 Пополнить баланс", callback_data="deposit")],
+                [InlineKeyboardButton("📊 Личный кабинет", callback_data="back_to_profile")]
+            ])
         )
         return
     
-    emoji = context.args[0]
-    if emoji not in GAMES_RESEARCH:
-        await update.message.reply_text("❌ Неизвестная игра! Используй: 🎯, 🎲, 🎳, ⚽, 🏀")
-        return
+    # СПИСАНИЕ СРЕДСТВ - ИСПРАВЛЕНО: всегда списываем для обычных пользователей
+    if not admin_mode.get(user_id, False):
+        user_data[user_id]['game_balance'] -= GAME_COST
     
-    game_data = GAMES_RESEARCH[emoji]
-    research_data = game_data["research_data"]
+    user_data[user_id]['total_games'] += 1
+    user_data[user_id]['last_activity'] = datetime.datetime.now().isoformat()
     
-    info_text = f"{emoji} ИНФОРМАЦИЯ О {game_data['name'].upper()}\n\n"
-    info_text += f"🎯 Всего значений: {game_data['values_range']}\n"
-    info_text += f"📊 Найдено: {len(research_data)}/{game_data['values_range']}\n\n"
+    game_emojis = {
+        'slots': '🎰', 'dart': '🎯', 'dice': '🎲',
+        'bowling': '🎳', 'football': '⚽', 'basketball': '🏀'
+    }
     
-    if research_data:
-        info_text += "📈 НАЙДЕННЫЕ ЗНАЧЕНИЯ:\n"
-        for value in sorted(research_data.keys()):
-            data = research_data[value]
-            info_text += f"#{value}: {data['count']} раз, {len(data['users'])} тестеров\n"
+    emoji = game_emojis.get(game_type, '🎰')
+    
+    # Сохраняем информацию об игре для обработки результата
+    context.user_data['expecting_dice'] = True
+    context.user_data['last_game_type'] = game_type
+    context.user_data['last_game_user_id'] = user_id
+    context.user_data['last_game_cost'] = GAME_COST if not admin_mode.get(user_id, False) else 0
+    
+    dice_message = await context.bot.send_dice(chat_id=query.message.chat_id, emoji=emoji)
+    context.user_data['last_dice_message_id'] = dice_message.message_id
+    
+    message_text = f"🎮 Игра запущена! {emoji}\n"
+    if admin_mode.get(user_id, False):
+        message_text += "👑 Режим админа: бесплатно\n"
     else:
-        info_text += "❓ Значения еще не найдены\n"
+        message_text += f"💸 Списано: {GAME_COST} звезд\n"
+    message_text += f"💰 Остаток: {user_data[user_id]['game_balance']} звезд"
     
-    info_text += f"\n💡 Отправь {emoji} в чат для тестирования!"
-    
-    await update.message.reply_text(info_text)
+    await query.edit_message_text(message_text)
+    save_data()
 
-def generate_game_message(emoji, value):
-    """Генерирует уникальное сообщение для каждого значения игры"""
-    game_data = GAMES_RESEARCH[emoji]
-    
-    if value in game_data["messages"]:
-        message = game_data["messages"][value]
-    else:
-        message = f"{emoji} АНИМАЦИЯ #{value} - УНИКАЛЬНАЯ КОМБИНАЦИЯ!"
-    
-    return f"{message}\n🔢 Номер значения: {value}/{game_data['values_range']}"
-
-# 🎮 ОБРАБОТКА DICE - ДЛЯ ВСЕХ ИГР
+# 🎰 ОБРАБОТКА DICE - ПОЛНАЯ СИСТЕМА С ТЕКСТОМ ПОСЛЕ КАЖДОЙ АНИМАЦИИ
 async def handle_dice_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     user_id = message.from_user.id
@@ -224,99 +522,277 @@ async def handle_dice_result(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not message.dice:
         return
     
+    if not context.user_data.get('expecting_dice', False):
+        return
+    
+    if context.user_data.get('last_game_user_id') != user_id:
+        return
+    
     emoji = message.dice.emoji
     value = message.dice.value
     
-    # Проверяем, что это одна из исследуемых игр
-    if emoji not in GAMES_RESEARCH:
+    user_data[user_id]['last_activity'] = datetime.datetime.now().isoformat()
+    
+    # Получаем конфиг игры
+    game_config = None
+    for emoji_key, config in GAMES_CONFIG.items():
+        if emoji_key == emoji:
+            game_config = config
+            break
+    
+    if not game_config:
         return
     
-    game_data = GAMES_RESEARCH[emoji]
-    research_data = game_data["research_data"]
+    # Получаем результат для этого значения
+    result_config = game_config["values"].get(value)
+    if not result_config:
+        # Если значение не найдено, считаем проигрышем
+        result_config = {"win": False, "prize": 0, "message": f"{emoji} - проигрыш"}
     
-    # СОХРАНЯЕМ ДАННЫЕ ИССЛЕДОВАНИЯ
-    if value not in research_data:
-        research_data[value] = {
-            'first_seen': datetime.datetime.now().isoformat(),
-            'count': 0,
-            'users': set()
-        }
+    result_text = ""
     
-    research_data[value]['count'] += 1
-    research_data[value]['users'].add(user_id)
+    if result_config["win"]:
+        # ВЫИГРЫШ
+        win_amount = result_config["prize"]
+        user_data[user_id]['game_balance'] += win_amount
+        user_data[user_id]['total_wins'] += 1
+        
+        result_text = (
+            f"{result_config['message']}\n\n"
+            f"💎 Текущий баланс: {user_data[user_id]['game_balance']} звезд\n"
+            f"📊 (Списано: {context.user_data['last_game_cost']} звезд + Выигрыш: {win_amount} звезд)"
+        )
+    else:
+        # ПРОИГРЫШ
+        result_text = (
+            f"{result_config['message']}\n\n"
+            f"💎 Текущий баланс: {user_data[user_id]['game_balance']} звезд\n"
+            f"📊 (Списано: {context.user_data['last_game_cost']} звезд)"
+        )
     
-    # УНИКАЛЬНОЕ СООБЩЕНИЕ ДЛЯ КАЖДОГО ЗНАЧЕНИЯ
-    result_text = generate_game_message(emoji, value)
-    
-    # ДОБАВЛЯЕМ СТАТИСТИКУ
-    result_text += f"\n\n📊 Статистика этого значения:"
-    result_text += f"\n{emoji} Выпадало раз: {research_data[value]['count']}"
-    result_text += f"\n👥 Уникальных тестеров: {len(research_data[value]['users'])}"
-    result_text += f"\n📈 Всего найдено: {len(research_data)}/{game_data['values_range']}"
-    
-    # ССЫЛКА НА КОМАНДУ ДЛЯ ПРОСМОТРА
-    result_text += f"\n\n💡 Подробнее: /game_info {emoji}"
-    
+    # Отправляем результат
     await message.reply_text(result_text)
+    
+    # 📊 ОБНОВЛЕНИЕ АКТИВНОСТИ
+    weekly_reward = update_daily_activity(user_id)
+    if weekly_reward:
+        user_data[user_id]['game_balance'] += weekly_reward
+        await message.reply_text(
+            f"🎁 ЕЖЕНЕДЕЛЬНАЯ НАГРАДА!\n\n"
+            f"💰 Награда: {weekly_reward} звезд\n"
+            f"💎 Баланс: {user_data[user_id]['game_balance']} звезд"
+        )
+    
+    # Очищаем данные игры
+    context.user_data.pop('expecting_dice', None)
+    context.user_data.pop('last_game_type', None)
+    context.user_data.pop('last_dice_message_id', None)
+    context.user_data.pop('last_game_user_id', None)
+    context.user_data.pop('last_game_cost', None)
+    
+    save_data()
+
+# 🎮 ОБРАБОТЧИК СООБЩЕНИЙ С ЭМОДЗИ
+async def handle_game_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    emoji = update.message.text
+    
+    if emoji not in GAMES_CONFIG:
+        return
+    
+    game_config = GAMES_CONFIG[emoji]
+    
+    # ПРОВЕРКА БАЛАНСА
+    if user_data[user_id]['game_balance'] < game_config["cost"]:
+        await update.message.reply_text(
+            f"❌ Недостаточно средств!\n\n"
+            f"💰 Ваш баланс: {user_data[user_id]['game_balance']} звезд\n"
+            f"🎯 Требуется: {game_config['cost']} звезд\n\n"
+            "💳 Пополните баланс чтобы играть!",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("💰 Пополнить", callback_data="deposit")]
+            ])
+        )
+        return
+    
+    # СПИСАНИЕ СРЕДСТВ
+    if not admin_mode.get(user_id, False):
+        user_data[user_id]['game_balance'] -= game_config["cost"]
+    
+    user_data[user_id]['total_games'] += 1
+    user_data[user_id]['last_activity'] = datetime.datetime.now().isoformat()
+    
+    # Сохраняем информацию об игре
+    context.user_data['expecting_dice'] = True
+    context.user_data['last_game_type'] = game_config["type"] if "type" in game_config else emoji
+    context.user_data['last_game_user_id'] = user_id
+    context.user_data['last_game_cost'] = game_config["cost"] if not admin_mode.get(user_id, False) else 0
+    
+    dice_message = await context.bot.send_dice(chat_id=update.message.chat_id, emoji=emoji)
+    context.user_data['last_dice_message_id'] = dice_message.message_id
+    
+    message_text = f"🎮 Игра запущена! {emoji}\n"
+    if admin_mode.get(user_id, False):
+        message_text += "👑 Режим админа: бесплатно\n"
+    else:
+        message_text += f"💸 Списано: {game_config['cost']} звезд\n"
+    message_text += f"💰 Остаток: {user_data[user_id]['game_balance']} звезд"
+    
+    await update.message.reply_text(message_text)
+    save_data()
+
+# 👑 АДМИН СИСТЕМА
+async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if len(context.args) == 0:
+        await update.message.reply_text("Использование: /admin <код>")
+        return
+    
+    code = context.args[0]
+    if code == ADMIN_CODE:
+        admin_mode[user_id] = True
+        await update.message.reply_text(
+            "👑 Режим администратора активирован!\n\n"
+            "Теперь вы можете играть бесплатно!\n\n"
+            "Используйте кнопки в профиле для управления."
+        )
+    else:
+        await update.message.reply_text("❌ Неверный код админа")
+
+async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    if not admin_mode.get(user_id, False):
+        return
+    
+    admin_text = "👑 АДМИН ПАНЕЛЬ\n\nДоступные функции:"
+    
+    keyboard = [
+        [InlineKeyboardButton("🎮 Бесплатные игры", callback_data="admin_play")],
+        [InlineKeyboardButton("📊 Статистика бота", callback_data="admin_stats")],
+        [InlineKeyboardButton("❌ Выйти из админки", callback_data="admin_exit")]
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(admin_text, reply_markup=reply_markup)
+
+async def admin_play_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    if not admin_mode.get(user_id, False):
+        return
+    
+    games_text = "👑 АДМИН - БЕСПЛАТНЫЕ ИГРЫ\n\n🎮 Выберите игру:"
+    
+    keyboard = [
+        [InlineKeyboardButton("🎰 Слоты (БЕСПЛАТНО)", callback_data="admin_play_slots")],
+        [InlineKeyboardButton("🎯 Дартс (БЕСПЛАТНО)", callback_data="admin_play_dart")],
+        [InlineKeyboardButton("🎲 Кубик (БЕСПЛАТНО)", callback_data="admin_play_dice")],
+        [InlineKeyboardButton("🎳 Боулинг (БЕСПЛАТНО)", callback_data="admin_play_bowling")],
+        [InlineKeyboardButton("⚽ Футбол (БЕСПЛАТНО)", callback_data="admin_play_football")],
+        [InlineKeyboardButton("🏀 Баскетбол (БЕСПЛАТНО)", callback_data="admin_play_basketball")],
+        [InlineKeyboardButton("🔙 Назад", callback_data="admin_back")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(games_text, reply_markup=reply_markup)
+
+async def admin_handle_game_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    if not admin_mode.get(user_id, False):
+        return
+    
+    game_type = query.data.replace("admin_play_", "")
+    
+    # В режиме админа не списываем средства
+    user_data[user_id]['total_games'] += 1
+    user_data[user_id]['last_activity'] = datetime.datetime.now().isoformat()
+    
+    game_emojis = {
+        'slots': '🎰', 'dart': '🎯', 'dice': '🎲',
+        'bowling': '🎳', 'football': '⚽', 'basketball': '🏀'
+    }
+    
+    emoji = game_emojis.get(game_type, '🎰')
+    
+    # Сохраняем информацию об игре
+    context.user_data['expecting_dice'] = True
+    context.user_data['last_game_type'] = game_type
+    context.user_data['last_game_user_id'] = user_id
+    context.user_data['last_game_cost'] = 0  # Бесплатно для админа
+    
+    dice_message = await context.bot.send_dice(chat_id=query.message.chat_id, emoji=emoji)
+    context.user_data['last_dice_message_id'] = dice_message.message_id
+    
+    await query.edit_message_text(
+        f"👑 Админ режим - игра запущена! {emoji}\n"
+        f"💸 Списано: 0 звезд (бесплатно)\n"
+        f"💰 Баланс: {user_data[user_id]['game_balance']} звезд"
+    )
 
 # 🔄 ОБРАБОТЧИКИ КНОПОК
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     callback_data = query.data
     
-    if callback_data == 'test_all':
-        await query.answer()
-        await query.edit_message_text(
-            "🎮 РЕЖИМ ТЕСТИРОВАНИЯ ВСЕХ ИГР АКТИВИРОВАН\n\n"
-            "Отправляй эмодзи игр в чат:\n"
-            "🎯 Дартс - 6 значений\n"
-            "🎲 Кости - 6 значений\n"
-            "🎳 Боулинг - 6 значений\n"
-            "⚽ Футбол - 5 значений\n"
-            "🏀 Баскетбол - 5 значений\n\n"
-            "Я покажу номер каждой анимации!"
-        )
+    # Сначала обрабатываем play_games отдельно
+    if callback_data == 'play_games':
+        await play_games_callback(update, context)
+    
+    # АДМИНСКИЕ КОМАНДЫ
+    elif callback_data.startswith('admin_'):
+        if callback_data == 'admin_panel':
+            await admin_panel(update, context)
+        elif callback_data == 'admin_play':
+            await admin_play_callback(update, context)
+        elif callback_data.startswith('admin_play_'):
+            await admin_handle_game_selection(update, context)
+        elif callback_data == 'admin_back':
+            await admin_panel(update, context)
+        elif callback_data == 'admin_exit':
+            user_id = query.from_user.id
+            admin_mode[user_id] = False
+            await query.edit_message_text("👑 Режим админа деактивирован")
+    
+    # ОСНОВНЫЕ КОМАНДЫ
+    elif callback_data.startswith('buy_'):
+        await handle_deposit_selection(update, context)
+    elif callback_data.startswith('play_'):
+        await handle_game_selection(update, context)
+    elif callback_data == 'deposit':
+        await deposit_callback(update, context)
+    elif callback_data == 'back_to_profile':
+        await back_to_profile_callback(update, context)
+
+async def back_to_profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await profile(update, context)
 
 # 🌐 FLASK ДЛЯ RAILWAY
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "🎮 Games Research Bot - Определяем номера анимаций всех игр!"
+    return "🎰 NSource Casino Bot - Полная игровая система!"
 
-@app.route('/research')
-def research_web():
-    """Веб-страница с исследованием всех игр"""
-    html = "<h1>🎮 Исследование всех игр</h1>"
-    
-    for emoji, game_data in GAMES_RESEARCH.items():
-        research_data = game_data["research_data"]
-        found_count = len(research_data)
-        total_count = game_data["values_range"]
-        
-        html += f"<h2>{emoji} {game_data['name']} - {found_count}/{total_count}</h2>"
-        
-        if research_data:
-            html += "<table border='1'><tr><th>Значение</th><th>Сообщение</th><th>Количество</th><th>Тестеров</th></tr>"
-            
-            for value in sorted(research_data.keys()):
-                data = research_data[value]
-                message = game_data["messages"].get(value, "УНИКАЛЬНАЯ КОМБИНАЦИЯ")
-                html += f"<tr><td>{value}</td><td>{message}</td><td>{data['count']}</td><td>{len(data['users'])}</td></tr>"
-            
-            html += "</table>"
-        else:
-            html += "<p>Данных пока нет</p>"
-    
-    return html
+def run_flask():
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
 
 # 🚀 ЗАПУСК БОТА
 def main():
-    port = int(os.environ.get("PORT", 5000))
+    load_data()
     
-    def run_flask():
-        app.run(host='0.0.0.0', port=port)
-    
+    # Запускаем Flask в отдельном потоке
     flask_thread = Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
@@ -325,19 +801,24 @@ def main():
     
     # КОМАНДЫ
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("test_all", test_all))
-    application.add_handler(CommandHandler("research", research_command))
-    application.add_handler(CommandHandler("game_stats", game_stats_command))
-    application.add_handler(CommandHandler("game_info", game_info_command))
+    application.add_handler(CommandHandler("profile", profile))
+    application.add_handler(CommandHandler("deposit", deposit_command))
+    application.add_handler(CommandHandler("activity", activity_command))
+    application.add_handler(CommandHandler("admin", admin_command))
     
     # CALLBACK'И
     application.add_handler(CallbackQueryHandler(handle_callback_query))
     
-    # СООБЩЕНИЯ - ОБРАБАТЫВАЕМ DICE (анимации)
+    # ПЛАТЕЖИ
+    application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
+    application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
+    
+    # СООБЩЕНИЯ
+    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🎰|🎯|🎲|🎳|⚽|🏀)$"), handle_game_message))
     application.add_handler(MessageHandler(filters.Dice.ALL, handle_dice_result))
     
-    print("🎮 Games Research Bot запущен!")
-    print("🔬 Бот будет реагировать на анимации: 🎯 🎲 🎳 ⚽ 🏀")
+    print("🎰 NSource Casino Bot запущен!")
+    print("🎮 Доступные игры: 🎰 🎯 🎲 🎳 ⚽ 🏀")
     application.run_polling()
 
 if __name__ == '__main__':
