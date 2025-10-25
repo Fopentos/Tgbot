@@ -14,32 +14,14 @@ PROVIDER_TOKEN = os.environ.get("PROVIDER_TOKEN", "TEST_PROVIDER_TOKEN")
 ADMIN_CODE = os.environ.get("ADMIN_CODE", "1337")
 
 # 🎯 НАСТРОЙКИ ИГР
-GAME_COST = 5
+GAME_COST = 0  # Бесплатно для тестирования
 
-# 💰 ПАКЕТЫ ПОПОЛНЕНИЯ
-PRODUCTS = {
-    "pack_5": {"title": "5 Игровых звезд", "description": "Пополнение баланса на 5 игровых звезд", "price": 5, "currency": "XTR", "credits": 5},
-    "pack_10": {"title": "10 Игровых звезд", "description": "Пополнение баланса на 10 игровых звезд", "price": 10, "currency": "XTR", "credits": 10},
-}
-
-# 🎰 КОНФИГУРАЦИЯ СЛОТОВ (упрощенная для теста)
-SLOT_CONFIG = {
-    1: {"name": "ДЖЕКПОТ 777", "stars": 100},
-    22: {"name": "ТРИ ЛИМОНА", "stars": 50},
-    33: {"name": "ТРИ ВИШНИ", "stars": 25},
-    44: {"name": "ТРИ БАРА", "stars": 15},
-}
-
-# 🎮 КОНФИГУРАЦИЯ ИГР
-GAMES_CONFIG = {
-    "🎰": {"cost": 5, "type": "slots"},
-    "🎯": {"cost": 5, "type": "dart", "win": 6, "prize": 15},
-    "🎲": {"cost": 5, "type": "dice", "win": 6, "prize": 15},
-}
+# 🎰 ТЕСТОВЫЙ РЕЖИМ - МЫ ХОТИМ УЗНАТЬ ВСЕ ЗНАЧЕНИЯ
+SLOT_VALUES_RESEARCH = {}
 
 # 🗃️ БАЗА ДАННЫХ
 user_data = defaultdict(lambda: {
-    'game_balance': 100,  # Стартовый баланс для теста
+    'game_balance': 1000,  # Много звезд для тестирования
     'total_games': 0,
     'total_wins': 0,
 })
@@ -47,59 +29,86 @@ user_data = defaultdict(lambda: {
 # 👤 ОСНОВНЫЕ КОМАНДЫ
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🎰 NSource Casino Бот\n\n"
-        "Доступные игры:\n"
-        "🎰 Слоты | 🎯 Дартс | 🎲 Кубик\n\n"
-        "Просто отправь эмодзи игры чтобы начать!"
+        "🔬 РЕЖИМ ТЕСТИРОВАНИЯ СЛОТОВ\n\n"
+        "🎯 Цель: определить все 64 значения слотов\n\n"
+        "Команды:\n"
+        "/test_slots - Протестировать слоты\n"
+        "/research - Показать собранные данные\n"
+        "/reset_research - Сбросить исследование\n\n"
+        "Просто отправь 🎰 чтобы начать тест!"
     )
 
-async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    user_id = user.id
-    data = user_data[user_id]
+async def test_slots(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Запуск тестирования слотов"""
+    user_id = update.effective_user.id
     
-    profile_text = f"""
-📊 Личный кабинет
+    # Даем бесплатные звезды для тестирования
+    user_data[user_id]['game_balance'] = 1000
+    
+    await update.message.reply_text(
+        "🎰 ЗАПУСК ТЕСТИРОВАНИЯ СЛОТОВ\n\n"
+        "💰 Баланс: 1000 звезд (бесплатно)\n"
+        "🎯 Играй в слоты и я буду записывать все значения\n"
+        "📊 Используй /research чтобы посмотреть прогресс\n\n"
+        "Отправь 🎰 чтобы начать!"
+    )
 
-👤 Имя: {user.first_name}
-💰 Баланс: {data['game_balance']} звезд
-🎮 Всего игр: {data['total_games']}
-🏆 Побед: {data['total_wins']}
-    """
+async def research_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать результаты исследования"""
+    user_id = update.effective_user.id
     
-    keyboard = [
-        [InlineKeyboardButton("🎮 Играть", callback_data="play_games")]
-    ]
+    if not SLOT_VALUES_RESEARCH:
+        await update.message.reply_text("📊 Исследование пусто. Сыграй в слоты чтобы собрать данные!")
+        return
     
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(profile_text, reply_markup=reply_markup)
+    research_text = "🔬 РЕЗУЛЬТАТЫ ИССЛЕДОВАНИЯ СЛОТОВ\n\n"
+    research_text += f"📈 Найдено значений: {len(SLOT_VALUES_RESEARCH)}/64\n\n"
+    
+    # Группируем значения по диапазонам для удобства
+    for i in range(0, 64, 8):
+        range_values = []
+        for j in range(i+1, i+9):
+            if j in SLOT_VALUES_RESEARCH:
+                range_values.append(f"🎰{j}")
+            else:
+                range_values.append(f"❓{j}")
+        
+        research_text += f"{i+1:02d}-{i+8:02d}: {' '.join(range_values)}\n"
+    
+    research_text += f"\n📋 Все найденные значения: {sorted(SLOT_VALUES_RESEARCH.keys())}"
+    
+    await update.message.reply_text(research_text)
 
-# 🎮 СИСТЕМА ИГР
+async def reset_research(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сбросить исследование"""
+    SLOT_VALUES_RESEARCH.clear()
+    await update.message.reply_text("🔄 Исследование сброшено! Начинаем заново.")
+
+# 🎮 СИСТЕМА ИГР - ТЕСТОВЫЙ РЕЖИМ
 async def handle_game_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     emoji = update.message.text
     
-    if emoji not in GAMES_CONFIG:
+    if emoji != "🎰":
+        await update.message.reply_text("🔬 В режиме тестирования работают только слоты (🎰)")
         return
     
-    if user_data[user_id]['game_balance'] < GAME_COST:
-        await update.message.reply_text("❌ Недостаточно средств! Баланс: " + str(user_data[user_id]['game_balance']))
-        return
-    
-    user_data[user_id]['game_balance'] -= GAME_COST
     user_data[user_id]['total_games'] += 1
     
-    game_type = GAMES_CONFIG[emoji]["type"]
     context.user_data['expecting_dice'] = True
-    context.user_data['last_game_type'] = game_type
+    context.user_data['last_game_type'] = 'slots'
     context.user_data['last_game_user_id'] = user_id
     
     dice_message = await context.bot.send_dice(chat_id=update.message.chat_id, emoji=emoji)
     context.user_data['last_dice_message_id'] = dice_message.message_id
     
-    await update.message.reply_text(f"🎮 Игра запущена! {emoji}\n💸 Списано: {GAME_COST} звезд\n💰 Остаток: {user_data[user_id]['game_balance']} звезд")
+    await update.message.reply_text(
+        f"🔬 Тестовый бросок #{user_data[user_id]['total_games']}\n"
+        f"💸 Списано: 0 звезд (тестовый режим)\n"
+        f"💰 Баланс: {user_data[user_id]['game_balance']} звезд"
+    )
 
-# 🎰 ОБРАБОТКА DICE - ИСПРАВЛЕННАЯ!
+# 🎰 ОБРАБОТКА DICE - ИССЛЕДОВАТЕЛЬСКИЙ РЕЖИМ
 async def handle_dice_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     user_id = message.from_user.id
@@ -116,27 +125,49 @@ async def handle_dice_result(update: Update, context: ContextTypes.DEFAULT_TYPE)
     emoji = message.dice.emoji
     value = message.dice.value
     
-    result_text = ""
-    
     if emoji == "🎰":
-        if value in SLOT_CONFIG:
-            win_combo = SLOT_CONFIG[value]
-            user_data[user_id]['game_balance'] += win_combo["stars"]
-            user_data[user_id]['total_wins'] += 1
-            result_text = f"🎉 {win_combo['name']}!\n💰 Выигрыш: {win_combo['stars']} звезд\n💎 Баланс: {user_data[user_id]['game_balance']} звезд"
+        # ЗАПИСЫВАЕМ ЗНАЧЕНИЕ В БАЗУ ДАННЫХ ИССЛЕДОВАНИЯ
+        if value not in SLOT_VALUES_RESEARCH:
+            SLOT_VALUES_RESEARCH[value] = {
+                'first_seen': datetime.datetime.now().isoformat(),
+                'count': 0,
+                'users': set()
+            }
+        
+        SLOT_VALUES_RESEARCH[value]['count'] += 1
+        SLOT_VALUES_RESEARCH[value]['users'].add(user_id)
+        
+        # ФОРМИРУЕМ ДЕТАЛЬНЫЙ ОТЧЕТ
+        result_text = f"🎰 ТЕСТОВЫЙ РЕЗУЛЬТАТ\n\n"
+        result_text += f"🔢 Выпавшее значение: {value}\n"
+        result_text += f"📊 Всего таких значений: {SLOT_VALUES_RESEARCH[value]['count']}\n"
+        result_text += f"👥 Уникальных тестеров: {len(SLOT_VALUES_RESEARCH[value]['users'])}\n"
+        result_text += f"📈 Прогресс: {len(SLOT_VALUES_RESEARCH)}/64 значений\n\n"
+        
+        # АНАЛИЗ КОМБИНАЦИИ
+        if value <= 16:
+            combo_type = "ВЫСОКОЕ (1-16)"
+        elif value <= 32:
+            combo_type = "СРЕДНЕЕ (17-32)" 
+        elif value <= 48:
+            combo_type = "НИЗКОЕ (33-48)"
         else:
-            result_text = f"😢 Не повезло...\n💎 Баланс: {user_data[user_id]['game_balance']} звезд"
-    
-    elif emoji in ["🎯", "🎲", "🎳", "⚽", "🏀"]:
-        if value == 6:  # Для дартса и кубика
-            prize = 15
-            user_data[user_id]['game_balance'] += prize
-            user_data[user_id]['total_wins'] += 1
-            result_text = f"🎉 ПОБЕДА!\n💰 Выигрыш: {prize} звезд\n💎 Баланс: {user_data[user_id]['game_balance']} звезд"
+            combo_type = "ОЧЕНЬ НИЗКОЕ (49-64)"
+        
+        result_text += f"🎯 Диапазон: {combo_type}\n"
+        
+        # ПРЕДПОЛОЖЕНИЕ О ВЫИГРЫШЕ
+        if value in [1, 17, 33, 49]:
+            result_text += "💎 Возможный ДЖЕКПОТ (крайние значения диапазонов)\n"
+        elif value % 8 == 0:
+            result_text += "🔥 Возможный большой выигрыш (кратные 8)\n"
+        elif value % 4 == 0:
+            result_text += "⭐ Возможный средний выигрыш (кратные 4)\n"
         else:
-            result_text = f"😢 Мимо...\n💎 Баланс: {user_data[user_id]['game_balance']} звезд"
-    
-    if result_text:
+            result_text += "🎪 Обычная комбинация\n"
+        
+        result_text += f"\n💡 Используй /research для полной статистики"
+        
         await message.reply_text(result_text)
     
     context.user_data.pop('expecting_dice', None)
@@ -149,43 +180,16 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     callback_data = query.data
     
-    if callback_data == 'play_games':
+    if callback_data == 'test_slots':
         user_id = query.from_user.id
-        balance = user_data[user_id]['game_balance']
-        
-        games_text = f"🎮 Выбор игры\n💎 Баланс: {balance} звезд"
-        
-        keyboard = [
-            [InlineKeyboardButton("🎰 Слоты (5 звезд)", callback_data="play_slots")],
-            [InlineKeyboardButton("🎯 Дартс (5 звезд)", callback_data="play_dart")],
-            [InlineKeyboardButton("🎲 Кубик (5 звезд)", callback_data="play_dice")],
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(games_text, reply_markup=reply_markup)
-    
-    elif callback_data.startswith('play_'):
-        user_id = query.from_user.id
-        game_type = callback_data.replace("play_", "")
-        
-        if user_data[user_id]['game_balance'] < GAME_COST:
-            await query.answer("❌ Недостаточно средств!", show_alert=True)
-            return
-        
-        user_data[user_id]['game_balance'] -= GAME_COST
-        user_data[user_id]['total_games'] += 1
-        
-        game_emojis = {'slots': '🎰', 'dart': '🎯', 'dice': '🎲'}
-        emoji = game_emojis.get(game_type, '🎰')
-        
-        context.user_data['expecting_dice'] = True
-        context.user_data['last_game_type'] = game_type
-        context.user_data['last_game_user_id'] = user_id
-        
-        dice_message = await context.bot.send_dice(chat_id=query.message.chat_id, emoji=emoji)
-        context.user_data['last_dice_message_id'] = dice_message.message_id
+        user_data[user_id]['game_balance'] = 1000
         
         await query.edit_message_text(
-            f"🎮 Игра запущена! {emoji}\n💸 Списано: {GAME_COST} звезд\n💰 Остаток: {user_data[user_id]['game_balance']} звезд"
+            "🎰 РЕЖИМ ТЕСТИРОВАНИЯ АКТИВИРОВАН\n\n"
+            "Отправь 🎰 в чат чтобы сделать тестовый бросок!\n\n"
+            "Команды:\n"
+            "/research - Статистика\n"
+            "/reset_research - Сбросить"
         )
 
 # 🌐 FLASK ДЛЯ RAILWAY
@@ -193,18 +197,28 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "🎰 NSource Casino Bot is running!"
+    return "🔬 Slot Research Bot is running!"
 
-@app.route('/health')
-def health():
-    return "OK"
+@app.route('/research')
+def research_web():
+    """Веб-страница с исследованием"""
+    if not SLOT_VALUES_RESEARCH:
+        return "Исследование пусто"
+    
+    html = "<h1>🔬 Исследование Слотов</h1>"
+    html += f"<p>Найдено значений: {len(SLOT_VALUES_RESEARCH)}/64</p>"
+    html += "<table border='1'><tr><th>Значение</th><th>Количество</th><th>Тестеров</th></tr>"
+    
+    for value, data in sorted(SLOT_VALUES_RESEARCH.items()):
+        html += f"<tr><td>{value}</td><td>{data['count']}</td><td>{len(data['users'])}</td></tr>"
+    
+    html += "</table>"
+    return html
 
 # 🚀 ЗАПУСК БОТА
 def main():
-    # Получаем порт из переменных Railway
     port = int(os.environ.get("PORT", 5000))
     
-    # Запускаем Flask в отдельном потоке
     def run_flask():
         app.run(host='0.0.0.0', port=port)
     
@@ -212,21 +226,22 @@ def main():
     flask_thread.daemon = True
     flask_thread.start()
     
-    # Создаем и запускаем бота
     application = Application.builder().token(BOT_TOKEN).build()
     
     # КОМАНДЫ
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("profile", profile))
+    application.add_handler(CommandHandler("test_slots", test_slots))
+    application.add_handler(CommandHandler("research", research_command))
+    application.add_handler(CommandHandler("reset_research", reset_research))
     
     # CALLBACK'И
     application.add_handler(CallbackQueryHandler(handle_callback_query))
     
-    # СООБЩЕНИЯ - ИСПРАВЛЕННЫЕ ФИЛЬТРЫ!
-    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🎰|🎯|🎲)$"), handle_game_message))
-    application.add_handler(MessageHandler(filters.Dice.ALL, handle_dice_result))  # ИСПРАВЛЕННАЯ СТРОКА!
+    # СООБЩЕНИЯ
+    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🎰)$"), handle_game_message))
+    application.add_handler(MessageHandler(filters.Dice.ALL, handle_dice_result))
     
-    print("🎰 NSource Casino Bot запущен на Railway!")
+    print("🔬 Slot Research Bot запущен на Railway!")
     application.run_polling()
 
 if __name__ == '__main__':
