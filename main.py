@@ -1,4 +1,3 @@
-import asyncio
 import os
 import json
 import random
@@ -14,149 +13,159 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "8378526693:AAFOwAb6pVp1GOE0tXZN4PDLFnD_
 PROVIDER_TOKEN = os.environ.get("PROVIDER_TOKEN", "TEST_PROVIDER_TOKEN")
 ADMIN_CODE = os.environ.get("ADMIN_CODE", "1337")
 
-# 🎯 НАСТРОЙКИ ИГР
-GAME_COST = 5
+# 🎯 МИНИМАЛЬНАЯ И МАКСИМАЛЬНАЯ СТАВКА
+MIN_BET = 1
+MAX_BET = 100000
 
 # 💰 ПАКЕТЫ ПОПОЛНЕНИЯ (1 реальная звезда = 1 игровая звезда)
 PRODUCTS = {
-    "pack_5": {"title": "5 Игровых звезд", "description": "Пополнение баланса на 5 игровых звезд", "price": 5, "currency": "XTR", "credits": 5},
-    "pack_10": {"title": "10 Игровых звезд", "description": "Пополнение баланса на 10 игровых звезд", "price": 10, "currency": "XTR", "credits": 10},
-    "pack_25": {"title": "25 Игровых звезд", "description": "Пополнение баланса на 25 игровых звезд", "price": 25, "currency": "XTR", "credits": 25},
-    "pack_50": {"title": "50 Игровых звезд", "description": "Пополнение баланса на 50 игровых звезд", "price": 50, "currency": "XTR", "credits": 50},
-    "pack_100": {"title": "100 Игровых звезд", "description": "Пополнение баланса на 100 игровых звезд", "price": 100, "currency": "XTR", "credits": 100},
-    "pack_250": {"title": "250 Игровых звезд", "description": "Пополнение баланса на 250 игровых звезд", "price": 250, "currency": "XTR", "credits": 250},
-    "pack_500": {"title": "500 Игровых звезд", "description": "Пополнение баланса на 500 игровых звезд", "price": 500, "currency": "XTR", "credits": 500},
-    "pack_1000": {"title": "1000 Игровых звезд", "description": "Пополнение баланса на 1000 игровых звезд", "price": 1000, "currency": "XTR", "credits": 1000}
+    "pack_5": {"title": "5 ⭐", "description": "Пополнение баланса на 5 ⭐", "price": 5, "currency": "XTR", "credits": 5},
+    "pack_10": {"title": "10 ⭐", "description": "Пополнение баланса на 10 ⭐", "price": 10, "currency": "XTR", "credits": 10},
+    "pack_25": {"title": "25 ⭐", "description": "Пополнение баланса на 25 ⭐", "price": 25, "currency": "XTR", "credits": 25},
+    "pack_50": {"title": "50 ⭐", "description": "Пополнение баланса на 50 ⭐", "price": 50, "currency": "XTR", "credits": 50},
+    "pack_100": {"title": "100 ⭐", "description": "Пополнение баланса на 100 ⭐", "price": 100, "currency": "XTR", "credits": 100},
+    "pack_250": {"title": "250 ⭐", "description": "Пополнение баланса на 250 ⭐", "price": 250, "currency": "XTR", "credits": 250},
+    "pack_500": {"title": "500 ⭐", "description": "Пополнение баланса на 500 ⭐", "price": 500, "currency": "XTR", "credits": 500},
+    "pack_1000": {"title": "1000 ⭐", "description": "Пополнение баланса на 1000 ⭐", "price": 1000, "currency": "XTR", "credits": 1000}
 }
 
-# 🎮 ПОЛНАЯ КОНФИГУРАЦИЯ ВСЕХ ИГР С ВЫИГРЫШНЫМИ ЗНАЧЕНИЯМИ
+# 🎮 БАЗОВЫЕ ВЫИГРЫШИ ДЛЯ СТАВКИ 1 ⭐
+BASE_PRIZES = {
+    "🎰": {
+        "ТРИ БАРА": 3,
+        "ТРИ ВИШНИ": 5, 
+        "ТРИ ЛИМОНА": 10,
+        "ДЖЕКПОТ 777": 20
+    },
+    "🎯": {"ПОПАДАНИЕ В ЦЕЛЬ": 3},
+    "🎲": {"ВЫПАЛО 6": 3},
+    "🎳": {"СТРАЙК": 3},
+    "⚽": {"ГОООЛ": 3},
+    "🏀": {"ПОПАДАНИЕ": 3}
+}
+
+# 🎮 КОНФИГУРАЦИЯ ИГР
 GAMES_CONFIG = {
     "🎰": {
-        "cost": 5,
         "values": {
             # СЛОТЫ - 64 значения, 4 выигрышных
-            1: {"win": True, "prize": 15, "message": "🎰 ТРИ БАРА! Выигрыш: 15 звезд"},
-            2: {"win": False, "prize": 0, "message": "🎰 Комбинация #2 - проигрыш"},
-            3: {"win": False, "prize": 0, "message": "🎰 Комбинация #3 - проигрыш"},
-            4: {"win": False, "prize": 0, "message": "🎰 Комбинация #4 - проигрыш"},
-            5: {"win": False, "prize": 0, "message": "🎰 Комбинация #5 - проигрыш"},
-            6: {"win": False, "prize": 0, "message": "🎰 Комбинация #6 - проигрыш"},
-            7: {"win": False, "prize": 0, "message": "🎰 Комбинация #7 - проигрыш"},
-            8: {"win": False, "prize": 0, "message": "🎰 Комбинация #8 - проигрыш"},
-            9: {"win": False, "prize": 0, "message": "🎰 Комбинация #9 - проигрыш"},
-            10: {"win": False, "prize": 0, "message": "🎰 Комбинация #10 - проигрыш"},
-            11: {"win": False, "prize": 0, "message": "🎰 Комбинация #11 - проигрыш"},
-            12: {"win": False, "prize": 0, "message": "🎰 Комбинация #12 - проигрыш"},
-            13: {"win": False, "prize": 0, "message": "🎰 Комбинация #13 - проигрыш"},
-            14: {"win": False, "prize": 0, "message": "🎰 Комбинация #14 - проигрыш"},
-            15: {"win": False, "prize": 0, "message": "🎰 Комбинация #15 - проигрыш"},
-            16: {"win": False, "prize": 0, "message": "🎰 Комбинация #16 - проигрыш"},
-            17: {"win": False, "prize": 0, "message": "🎰 Комбинация #17 - проигрыш"},
-            18: {"win": False, "prize": 0, "message": "🎰 Комбинация #18 - проигрыш"},
-            19: {"win": False, "prize": 0, "message": "🎰 Комбинация #19 - проигрыш"},
-            20: {"win": False, "prize": 0, "message": "🎰 Комбинация #20 - проигрыш"},
-            21: {"win": False, "prize": 0, "message": "🎰 Комбинация #21 - проигрыш"},
-            22: {"win": True, "prize": 25, "message": "🎰 ТРИ ВИШНИ! Выигрыш: 25 звезд"},
-            23: {"win": False, "prize": 0, "message": "🎰 Комбинация #23 - проигрыш"},
-            24: {"win": False, "prize": 0, "message": "🎰 Комбинация #24 - проигрыш"},
-            25: {"win": False, "prize": 0, "message": "🎰 Комбинация #25 - проигрыш"},
-            26: {"win": False, "prize": 0, "message": "🎰 Комбинация #26 - проигрыш"},
-            27: {"win": False, "prize": 0, "message": "🎰 Комбинация #27 - проигрыш"},
-            28: {"win": False, "prize": 0, "message": "🎰 Комбинация #28 - проигрыш"},
-            29: {"win": False, "prize": 0, "message": "🎰 Комбинация #29 - проигрыш"},
-            30: {"win": False, "prize": 0, "message": "🎰 Комбинация #30 - проигрыш"},
-            31: {"win": False, "prize": 0, "message": "🎰 Комбинация #31 - проигрыш"},
-            32: {"win": False, "prize": 0, "message": "🎰 Комбинация #32 - проигрыш"},
-            33: {"win": False, "prize": 0, "message": "🎰 Комбинация #33 - проигрыш"},
-            34: {"win": False, "prize": 0, "message": "🎰 Комбинация #34 - проигрыш"},
-            35: {"win": False, "prize": 0, "message": "🎰 Комбинация #35 - проигрыш"},
-            36: {"win": False, "prize": 0, "message": "🎰 Комбинация #36 - проигрыш"},
-            37: {"win": False, "prize": 0, "message": "🎰 Комбинация #37 - проигрыш"},
-            38: {"win": False, "prize": 0, "message": "🎰 Комбинация #38 - проигрыш"},
-            39: {"win": False, "prize": 0, "message": "🎰 Комбинация #39 - проигрыш"},
-            40: {"win": False, "prize": 0, "message": "🎰 Комбинация #40 - проигрыш"},
-            41: {"win": False, "prize": 0, "message": "🎰 Комбинация #41 - проигрыш"},
-            42: {"win": False, "prize": 0, "message": "🎰 Комбинация #42 - проигрыш"},
-            43: {"win": True, "prize": 50, "message": "🎰 ТРИ ЛИМОНА! Выигрыш: 50 звезд"},
-            44: {"win": False, "prize": 0, "message": "🎰 Комбинация #44 - проигрыш"},
-            45: {"win": False, "prize": 0, "message": "🎰 Комбинация #45 - проигрыш"},
-            46: {"win": False, "prize": 0, "message": "🎰 Комбинация #46 - проигрыш"},
-            47: {"win": False, "prize": 0, "message": "🎰 Комбинация #47 - проигрыш"},
-            48: {"win": False, "prize": 0, "message": "🎰 Комбинация #48 - проигрыш"},
-            49: {"win": False, "prize": 0, "message": "🎰 Комбинация #49 - проигрыш"},
-            50: {"win": False, "prize": 0, "message": "🎰 Комбинация #50 - проигрыш"},
-            51: {"win": False, "prize": 0, "message": "🎰 Комбинация #51 - проигрыш"},
-            52: {"win": False, "prize": 0, "message": "🎰 Комбинация #52 - проигрыш"},
-            53: {"win": False, "prize": 0, "message": "🎰 Комбинация #53 - проигрыш"},
-            54: {"win": False, "prize": 0, "message": "🎰 Комбинация #54 - проигрыш"},
-            55: {"win": False, "prize": 0, "message": "🎰 Комбинация #55 - проигрыш"},
-            56: {"win": False, "prize": 0, "message": "🎰 Комбинация #56 - проигрыш"},
-            57: {"win": False, "prize": 0, "message": "🎰 Комбинация #57 - проигрыш"},
-            58: {"win": False, "prize": 0, "message": "🎰 Комбинация #58 - проигрыш"},
-            59: {"win": False, "prize": 0, "message": "🎰 Комбинация #59 - проигрыш"},
-            60: {"win": False, "prize": 0, "message": "🎰 Комбинация #60 - проигрыш"},
-            61: {"win": False, "prize": 0, "message": "🎰 Комбинация #61 - проигрыш"},
-            62: {"win": False, "prize": 0, "message": "🎰 Комбинация #62 - проигрыш"},
-            63: {"win": False, "prize": 0, "message": "🎰 Комбинация #63 - проигрыш"},
-            64: {"win": True, "prize": 100, "message": "🎰 ДЖЕКПОТ 777! Выигрыш: 100 звезд"}
+            1: {"win": True, "base_prize": BASE_PRIZES["🎰"]["ТРИ БАРА"], "message": "🎰 ТРИ БАРА! Выигрыш: {prize} ⭐"},
+            2: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #2 - проигрыш"},
+            3: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #3 - проигрыш"},
+            4: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #4 - проигрыш"},
+            5: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #5 - проигрыш"},
+            6: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #6 - проигрыш"},
+            7: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #7 - проигрыш"},
+            8: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #8 - проигрыш"},
+            9: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #9 - проигрыш"},
+            10: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #10 - проигрыш"},
+            11: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #11 - проигрыш"},
+            12: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #12 - проигрыш"},
+            13: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #13 - проигрыш"},
+            14: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #14 - проигрыш"},
+            15: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #15 - проигрыш"},
+            16: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #16 - проигрыш"},
+            17: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #17 - проигрыш"},
+            18: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #18 - проигрыш"},
+            19: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #19 - проигрыш"},
+            20: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #20 - проигрыш"},
+            21: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #21 - проигрыш"},
+            22: {"win": True, "base_prize": BASE_PRIZES["🎰"]["ТРИ ВИШНИ"], "message": "🎰 ТРИ ВИШНИ! Выигрыш: {prize} ⭐"},
+            23: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #23 - проигрыш"},
+            24: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #24 - проигрыш"},
+            25: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #25 - проигрыш"},
+            26: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #26 - проигрыш"},
+            27: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #27 - проигрыш"},
+            28: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #28 - проигрыш"},
+            29: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #29 - проигрыш"},
+            30: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #30 - проигрыш"},
+            31: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #31 - проигрыш"},
+            32: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #32 - проигрыш"},
+            33: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #33 - проигрыш"},
+            34: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #34 - проигрыш"},
+            35: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #35 - проигрыш"},
+            36: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #36 - проигрыш"},
+            37: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #37 - проигрыш"},
+            38: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #38 - проигрыш"},
+            39: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #39 - проигрыш"},
+            40: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #40 - проигрыш"},
+            41: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #41 - проигрыш"},
+            42: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #42 - проигрыш"},
+            43: {"win": True, "base_prize": BASE_PRIZES["🎰"]["ТРИ ЛИМОНА"], "message": "🎰 ТРИ ЛИМОНА! Выигрыш: {prize} ⭐"},
+            44: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #44 - проигрыш"},
+            45: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #45 - проигрыш"},
+            46: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #46 - проигрыш"},
+            47: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #47 - проигрыш"},
+            48: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #48 - проигрыш"},
+            49: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #49 - проигрыш"},
+            50: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #50 - проигрыш"},
+            51: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #51 - проигрыш"},
+            52: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #52 - проигрыш"},
+            53: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #53 - проигрыш"},
+            54: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #54 - проигрыш"},
+            55: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #55 - проигрыш"},
+            56: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #56 - проигрыш"},
+            57: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #57 - проигрыш"},
+            58: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #58 - проигрыш"},
+            59: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #59 - проигрыш"},
+            60: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #60 - проигрыш"},
+            61: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #61 - проигрыш"},
+            62: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #62 - проигрыш"},
+            63: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #63 - проигрыш"},
+            64: {"win": True, "base_prize": BASE_PRIZES["🎰"]["ДЖЕКПОТ 777"], "message": "🎰 ДЖЕКПОТ 777! Выигрыш: {prize} ⭐"}
         }
     },
     "🎯": {
-        "cost": 5,
         "values": {
             # ДАРТС - 6 значений, 1 выигрышное (6)
-            1: {"win": False, "prize": 0, "message": "🎯 - проигрыш"},
-            2: {"win": False, "prize": 0, "message": "🎯 - проигрыш"},
-            3: {"win": False, "prize": 0, "message": "🎯 - проигрыш"},
-            4: {"win": False, "prize": 0, "message": "🎯 - проигрыш"},
-            5: {"win": False, "prize": 0, "message": "🎯 - проигрыш"},
-            6: {"win": True, "prize": 15, "message": "🎯 - ПОПАДАНИЕ В ЦЕЛЬ! Выигрыш: 15 звезд"}
+            1: {"win": False, "base_prize": 0, "message": "🎯 - проигрыш"},
+            2: {"win": False, "base_prize": 0, "message": "🎯 - проигрыш"},
+            3: {"win": False, "base_prize": 0, "message": "🎯 - проигрыш"},
+            4: {"win": False, "base_prize": 0, "message": "🎯 - проигрыш"},
+            5: {"win": False, "base_prize": 0, "message": "🎯 - проигрыш"},
+            6: {"win": True, "base_prize": BASE_PRIZES["🎯"]["ПОПАДАНИЕ В ЦЕЛЬ"], "message": "🎯 - ПОПАДАНИЕ В ЦЕЛЬ! Выигрыш: {prize} ⭐"}
         }
     },
     "🎲": {
-        "cost": 5,
         "values": {
             # КОСТИ - 6 значений, 1 выигрышное (6)
-            1: {"win": False, "prize": 0, "message": "🎲 - проигрыш"},
-            2: {"win": False, "prize": 0, "message": "🎲 - проигрыш"},
-            3: {"win": False, "prize": 0, "message": "🎲 - проигрыш"},
-            4: {"win": False, "prize": 0, "message": "🎲 - проигрыш"},
-            5: {"win": False, "prize": 0, "message": "🎲 - проигрыш"},
-            6: {"win": True, "prize": 15, "message": "🎲 - ВЫПАЛО 6! Выигрыш: 15 звезд"}
+            1: {"win": False, "base_prize": 0, "message": "🎲 - проигрыш"},
+            2: {"win": False, "base_prize": 0, "message": "🎲 - проигрыш"},
+            3: {"win": False, "base_prize": 0, "message": "🎲 - проигрыш"},
+            4: {"win": False, "base_prize": 0, "message": "🎲 - проигрыш"},
+            5: {"win": False, "base_prize": 0, "message": "🎲 - проигрыш"},
+            6: {"win": True, "base_prize": BASE_PRIZES["🎲"]["ВЫПАЛО 6"], "message": "🎲 - ВЫПАЛО 6! Выигрыш: {prize} ⭐"}
         }
     },
     "🎳": {
-        "cost": 5,
         "values": {
             # БОУЛИНГ - 6 значений, 1 выигрышное (6)
-            1: {"win": False, "prize": 0, "message": "🎳 - проигрыш"},
-            2: {"win": False, "prize": 0, "message": "🎳 - проигрыш"},
-            3: {"win": False, "prize": 0, "message": "🎳 - проигрыш"},
-            4: {"win": False, "prize": 0, "message": "🎳 - проигрыш"},
-            5: {"win": False, "prize": 0, "message": "🎳 - проигрыш"},
-            6: {"win": True, "prize": 15, "message": "🎳 - СТРАЙК! Выигрыш: 15 звезд"}
+            1: {"win": False, "base_prize": 0, "message": "🎳 - проигрыш"},
+            2: {"win": False, "base_prize": 0, "message": "🎳 - проигрыш"},
+            3: {"win": False, "base_prize": 0, "message": "🎳 - проигрыш"},
+            4: {"win": False, "base_prize": 0, "message": "🎳 - проигрыш"},
+            5: {"win": False, "base_prize": 0, "message": "🎳 - проигрыш"},
+            6: {"win": True, "base_prize": BASE_PRIZES["🎳"]["СТРАЙК"], "message": "🎳 - СТРАЙК! Выигрыш: {prize} ⭐"}
         }
     },
     "⚽": {
-        "cost": 5,
         "values": {
             # ФУТБОЛ - 5 значений, 1 выигрышное (5)
-            1: {"win": False, "prize": 0, "message": "⚽ - проигрыш"},
-            2: {"win": False, "prize": 0, "message": "⚽ - проигрыш"},
-            3: {"win": False, "prize": 0, "message": "⚽ - проигрыш"},
-            4: {"win": False, "prize": 0, "message": "⚽ - проигрыш"},
-            5: {"win": True, "prize": 15, "message": "⚽ - ГОООЛ! Выигрыш: 15 звезд"}
+            1: {"win": False, "base_prize": 0, "message": "⚽ - проигрыш"},
+            2: {"win": False, "base_prize": 0, "message": "⚽ - проигрыш"},
+            3: {"win": False, "base_prize": 0, "message": "⚽ - проигрыш"},
+            4: {"win": False, "base_prize": 0, "message": "⚽ - проигрыш"},
+            5: {"win": True, "base_prize": BASE_PRIZES["⚽"]["ГОООЛ"], "message": "⚽ - ГОООЛ! Выигрыш: {prize} ⭐"}
         }
     },
     "🏀": {
-        "cost": 5,
         "values": {
             # БАСКЕТБОЛ - 5 значений, 1 выигрышное (5)
-            1: {"win": False, "prize": 0, "message": "🏀 - проигрыш"},
-            2: {"win": False, "prize": 0, "message": "🏀 - проигрыш"},
-            3: {"win": False, "prize": 0, "message": "🏀 - проигрыш"},
-            4: {"win": False, "prize": 0, "message": "🏀 - проигрыш"},
-            5: {"win": True, "prize": 15, "message": "🏀 - ПОПАДАНИЕ! Выигрыш: 15 звезд"}
+            1: {"win": False, "base_prize": 0, "message": "🏀 - проигрыш"},
+            2: {"win": False, "base_prize": 0, "message": "🏀 - проигрыш"},
+            3: {"win": False, "base_prize": 0, "message": "🏀 - проигрыш"},
+            4: {"win": False, "base_prize": 0, "message": "🏀 - проигрыш"},
+            5: {"win": True, "base_prize": BASE_PRIZES["🏀"]["ПОПАДАНИЕ"], "message": "🏀 - ПОПАДАНИЕ! Выигрыш: {prize} ⭐"}
         }
     }
 }
@@ -168,6 +177,7 @@ user_data = defaultdict(lambda: {
     'total_wins': 0,
     'total_deposited': 0,
     'real_money_spent': 0,
+    'current_bet': 5,  # Ставка по умолчанию
     'registration_date': datetime.datetime.now().isoformat(),
     'last_activity': datetime.datetime.now().isoformat()
 })
@@ -243,24 +253,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Добро пожаловать в казино!
 
-Доступные игры (5 звезд за игру):
-🎰 Слоты - 64 комбинации, 4 выигрышных (15-100 звезд)
-🎯 Дартс - победа на 6 (15 звезд)
-🎲 Кубик - победа на 6 (15 звезд)
-🎳 Боулинг - победа на 6 (15 звезд)
-⚽ Футбол - победа на 5 (15 звезд)
-🏀 Баскетбол - победа на 5 (15 звезд)
+Доступные игры (ставка от 1 до 100000 ⭐):
+🎰 Слоты - 64 комбинации, 4 выигрышных (3-20x ставки)
+🎯 Дартс - победа на 6 (3x ставки)
+🎲 Кубик - победа на 6 (3x ставки)
+🎳 Боулинг - победа на 6 (3x ставки)
+⚽ Футбол - победа на 5 (3x ставки)
+🏀 Баскетбол - победа на 5 (3x ставки)
 
 💰 Пополнение: 1:1
-1 реальная звезда = 1 игровая звезда
+1 реальная звезда = 1 ⭐
 
 🎁 Система активности:
-Играй 3+ раза в день 7 дней подряд = случайный подарок (15-50 звезд)
+Играй 3+ раза в день 7 дней подряд = случайный подарок (15-50 ⭐)
 
 Команды:
 /profile - Личный кабинет
 /deposit - Пополнить баланс  
 /activity - Моя активность
+/bet <сумма> - Изменить ставку
 
 Просто отправь любой dice эмодзи игры чтобы начать играть!
     """
@@ -268,7 +279,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🎮 Играть", callback_data="play_games")],
         [InlineKeyboardButton("📊 Профиль", callback_data="back_to_profile")],
-        [InlineKeyboardButton("💰 Пополнить", callback_data="deposit")]
+        [InlineKeyboardButton("💰 Пополнить", callback_data="deposit")],
+        [InlineKeyboardButton("🎯 Изменить ставку", callback_data="change_bet")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -289,16 +301,18 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
 📅 Регистрация: {data['registration_date'][:10]}
 
 💎 Статистика:
-💰 Баланс: {data['game_balance']} звезд
+💰 Баланс: {data['game_balance']} ⭐
+🎯 Текущая ставка: {data['current_bet']} ⭐
 🎮 Всего игр: {data['total_games']}
 🏆 Побед: {data['total_wins']}
 📈 Винрейт: {win_rate:.1f}%
-💳 Пополнено: {data['total_deposited']} звезд
+💳 Пополнено: {data['total_deposited']} ⭐
     """
     
     keyboard = [
         [InlineKeyboardButton("💰 Пополнить баланс", callback_data="deposit")],
-        [InlineKeyboardButton("🎮 Играть", callback_data="play_games")]
+        [InlineKeyboardButton("🎮 Играть", callback_data="play_games")],
+        [InlineKeyboardButton("🎯 Изменить ставку", callback_data="change_bet")]
     ]
     
     if admin_mode.get(user_id, False):
@@ -311,6 +325,38 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(profile_text, reply_markup=reply_markup)
 
+# 🎯 КОМАНДА ДЛЯ ИЗМЕНЕНИЯ СТАВКИ
+async def bet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not context.args:
+        await update.message.reply_text(
+            f"🎯 Текущая ставка: {user_data[user_id]['current_bet']} ⭐\n\n"
+            f"Использование: /bet <сумма>\n"
+            f"Минимальная ставка: {MIN_BET} ⭐\n"
+            f"Максимальная ставка: {MAX_BET} ⭐"
+        )
+        return
+    
+    try:
+        new_bet = int(context.args[0])
+        
+        if new_bet < MIN_BET:
+            await update.message.reply_text(f"❌ Минимальная ставка: {MIN_BET} ⭐")
+            return
+            
+        if new_bet > MAX_BET:
+            await update.message.reply_text(f"❌ Максимальная ставка: {MAX_BET} ⭐")
+            return
+            
+        user_data[user_id]['current_bet'] = new_bet
+        save_data()
+        
+        await update.message.reply_text(f"✅ Ставка изменена на {new_bet} ⭐")
+        
+    except ValueError:
+        await update.message.reply_text("❌ Пожалуйста, введите корректное число")
+
 async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /deposit"""
     user_id = update.effective_user.id
@@ -319,10 +365,10 @@ async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     deposit_text = f"""
 💰 Пополнение баланса
 
-💎 Текущий баланс: {data['game_balance']} звезд
+💎 Текущий баланс: {data['game_balance']} ⭐
 
 🎯 Выберите пакет пополнения:
-💫 1 реальная звезда = 1 игровая звезда
+💫 1 реальная звезда = 1 ⭐
     """
     
     keyboard = []
@@ -377,10 +423,10 @@ async def deposit_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     deposit_text = f"""
 💰 Пополнение баланса
 
-💎 Текущий баланс: {current_balance} звезд
+💎 Текущий баланс: {current_balance} ⭐
 
 🎯 Выберите пакет пополнения:
-💫 1 реальная звезда = 1 игровая звезда
+💫 1 реальная звезда = 1 ⭐
     """
     
     keyboard = []
@@ -404,7 +450,6 @@ async def handle_deposit_selection(update: Update, context: ContextTypes.DEFAULT
     product_key = query.data.replace("buy_", "")
     product = PRODUCTS[product_key]
     
-    # ИСПРАВЛЕННАЯ ЦЕНА - без умножения на 100
     await context.bot.send_invoice(
         chat_id=query.message.chat_id,
         title=product["title"],
@@ -436,35 +481,38 @@ async def successful_payment_handler(update: Update, context: ContextTypes.DEFAU
     await update.message.reply_text(
         f"✅ Платеж успешен!\n\n"
         f"💳 Оплачено: {product['price']} Stars\n"
-        f"💎 Зачислено: {product['credits']} игровых звезд\n"
-        f"💰 Баланс: {user_data[user_id]['game_balance']} звезд\n\n"
+        f"💎 Зачислено: {product['credits']} ⭐\n"
+        f"💰 Баланс: {user_data[user_id]['game_balance']} ⭐\n\n"
         f"🎮 Приятной игры!"
     )
 
-# 🎮 СИСТЕМА ИГР - УПРОЩЕННАЯ
+# 🎮 СИСТЕМА ИГР С ИЗМЕНЯЕМОЙ СТАВКОЙ
 async def play_games_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
     user_id = query.from_user.id
     balance = user_data[user_id]['game_balance']
+    current_bet = user_data[user_id]['current_bet']
     
     games_text = f"""
 🎮 Выбор игры
 
-💎 Баланс: {balance} звезд
-🎯 Стоимость игры: 5 звезд
+💎 Баланс: {balance} ⭐
+🎯 Текущая ставка: {current_bet} ⭐
+📊 Диапазон ставок: {MIN_BET}-{MAX_BET} ⭐
 
 Выберите игру или просто отправь любой dice эмодзи в чат!
     """
     
     keyboard = [
-        [InlineKeyboardButton("🎰 Слоты (5 звезд)", callback_data="play_slots")],
-        [InlineKeyboardButton("🎯 Дартс (5 звезд)", callback_data="play_dart")],
-        [InlineKeyboardButton("🎲 Кубик (5 звезд)", callback_data="play_dice")],
-        [InlineKeyboardButton("🎳 Боулинг (5 звезд)", callback_data="play_bowling")],
-        [InlineKeyboardButton("⚽ Футбол (5 звезд)", callback_data="play_football")],
-        [InlineKeyboardButton("🏀 Баскетбол (5 звезд)", callback_data="play_basketball")],
+        [InlineKeyboardButton("🎰 Слоты", callback_data="play_slots")],
+        [InlineKeyboardButton("🎯 Дартс", callback_data="play_dart")],
+        [InlineKeyboardButton("🎲 Кубик", callback_data="play_dice")],
+        [InlineKeyboardButton("🎳 Боулинг", callback_data="play_bowling")],
+        [InlineKeyboardButton("⚽ Футбол", callback_data="play_football")],
+        [InlineKeyboardButton("🏀 Баскетбол", callback_data="play_basketball")],
+        [InlineKeyboardButton("🎯 Изменить ставку", callback_data="change_bet")],
         [InlineKeyboardButton("💰 Пополнить баланс", callback_data="deposit")],
         [InlineKeyboardButton("📊 Личный кабинет", callback_data="back_to_profile")]
     ]
@@ -472,22 +520,53 @@ async def play_games_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(games_text, reply_markup=reply_markup)
 
+async def change_bet_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    current_bet = user_data[user_id]['current_bet']
+    
+    bet_text = f"""
+🎯 Изменение ставки
+
+💎 Текущая ставка: {current_bet} ⭐
+📊 Диапазон ставок: {MIN_BET}-{MAX_BET} ⭐
+
+Используйте команду /bet <сумма> для изменения ставки.
+
+Пример:
+/bet 10 - установить ставку 10 ⭐
+/bet 100 - установить ставку 100 ⭐
+/bet 1000 - установить ставку 1000 ⭐
+    """
+    
+    keyboard = [
+        [InlineKeyboardButton("🔙 Назад к играм", callback_data="play_games")],
+        [InlineKeyboardButton("📊 Профиль", callback_data="back_to_profile")]
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(bet_text, reply_markup=reply_markup)
+
 async def handle_game_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
     user_id = query.from_user.id
     game_type = query.data.replace("play_", "")
+    current_bet = user_data[user_id]['current_bet']
     
     # ПРОВЕРКА БАЛАНСА
-    if user_data[user_id]['game_balance'] < GAME_COST and not admin_mode.get(user_id, False):
+    if user_data[user_id]['game_balance'] < current_bet and not admin_mode.get(user_id, False):
         await query.edit_message_text(
             "❌ Недостаточно средств!\n\n"
-            f"💰 Ваш баланс: {user_data[user_id]['game_balance']} звезд\n"
-            f"🎯 Требуется: {GAME_COST} звезд\n\n"
+            f"💰 Ваш баланс: {user_data[user_id]['game_balance']} ⭐\n"
+            f"🎯 Требуется: {current_bet} ⭐\n\n"
             "💳 Пополните баланс чтобы играть!",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("💰 Пополнить баланс", callback_data="deposit")],
+                [InlineKeyboardButton("🎯 Изменить ставку", callback_data="change_bet")],
                 [InlineKeyboardButton("📊 Личный кабинет", callback_data="back_to_profile")]
             ])
         )
@@ -495,7 +574,7 @@ async def handle_game_selection(update: Update, context: ContextTypes.DEFAULT_TY
     
     # СПИСАНИЕ СРЕДСТВ
     if not admin_mode.get(user_id, False):
-        user_data[user_id]['game_balance'] -= GAME_COST
+        user_data[user_id]['game_balance'] -= current_bet
     
     user_data[user_id]['total_games'] += 1
     user_data[user_id]['last_activity'] = datetime.datetime.now().isoformat()
@@ -510,12 +589,12 @@ async def handle_game_selection(update: Update, context: ContextTypes.DEFAULT_TY
     # Отправляем dice от имени бота
     dice_message = await context.bot.send_dice(chat_id=query.message.chat_id, emoji=emoji)
     
-    # Обрабатываем результат сразу, но с задержкой
-    await process_dice_result(user_id, emoji, dice_message.dice.value, GAME_COST if not admin_mode.get(user_id, False) else 0, dice_message, context)
+    # Обрабатываем результат сразу
+    await process_dice_result(user_id, emoji, dice_message.dice.value, current_bet if not admin_mode.get(user_id, False) else 0, dice_message, context)
     
     save_data()
 
-# 🎰 ОБРАБОТКА DICE ОТ ПОЛЬЗОВАТЕЛЯ - ГЛАВНЫЙ ОБРАБОТЧИК
+# 🎰 ОБРАБОТКА DICE ОТ ПОЛЬЗОВАТЕЛЯ
 async def handle_user_dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     user_id = update.effective_user.id
@@ -530,33 +609,36 @@ async def handle_user_dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if emoji not in GAMES_CONFIG:
         return
     
+    current_bet = user_data[user_id]['current_bet']
+    
     # ПРОВЕРКА БАЛАНСА
-    if user_data[user_id]['game_balance'] < GAME_COST and not admin_mode.get(user_id, False):
+    if user_data[user_id]['game_balance'] < current_bet and not admin_mode.get(user_id, False):
         await message.reply_text(
             f"❌ Недостаточно средств!\n\n"
-            f"💰 Ваш баланс: {user_data[user_id]['game_balance']} звезд\n"
-            f"🎯 Требуется: {GAME_COST} звезд\n\n"
+            f"💰 Ваш баланс: {user_data[user_id]['game_balance']} ⭐\n"
+            f"🎯 Требуется: {current_bet} ⭐\n\n"
             "💳 Пополните баланс чтобы играть!",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("💰 Пополнить баланс", callback_data="deposit")]
+                [InlineKeyboardButton("💰 Пополнить баланс", callback_data="deposit")],
+                [InlineKeyboardButton("🎯 Изменить ставку", callback_data="change_bet")]
             ])
         )
         return
     
     # СПИСАНИЕ СРЕДСТВ
-    cost = GAME_COST if not admin_mode.get(user_id, False) else 0
+    cost = current_bet if not admin_mode.get(user_id, False) else 0
     if not admin_mode.get(user_id, False):
         user_data[user_id]['game_balance'] -= cost
     
     user_data[user_id]['total_games'] += 1
     user_data[user_id]['last_activity'] = datetime.datetime.now().isoformat()
     
-    # Обрабатываем результат с задержкой
+    # Обрабатываем результат
     await process_dice_result(user_id, emoji, value, cost, message, context)
     
     save_data()
 
-# 🎯 ОБРАБОТКА РЕЗУЛЬТАТА DICE С ЗАДЕРЖКОЙ
+# 🎯 ОБРАБОТКА РЕЗУЛЬТАТА DICE С ПРОПОРЦИОНАЛЬНЫМИ ВЫИГРЫШАМИ
 async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, message, context: ContextTypes.DEFAULT_TYPE):
     game_config = GAMES_CONFIG.get(emoji)
     if not game_config:
@@ -565,31 +647,34 @@ async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, m
     # Получаем результат для этого значения
     result_config = game_config["values"].get(value)
     if not result_config:
-        result_config = {"win": False, "prize": 0, "message": f"{emoji} - проигрыш"}
+        result_config = {"win": False, "base_prize": 0, "message": f"{emoji} - проигрыш"}
+    
+    # ВЫЧИСЛЯЕМ РЕАЛЬНЫЙ ВЫИГРЫШ НА ОСНОВЕ СТАВКИ
+    current_bet = user_data[user_id]['current_bet']
+    actual_prize = result_config["base_prize"] * current_bet
     
     result_text = ""
     
     if result_config["win"]:
         # ВЫИГРЫШ
-        win_amount = result_config["prize"]
-        user_data[user_id]['game_balance'] += win_amount
+        user_data[user_id]['game_balance'] += actual_prize
         user_data[user_id]['total_wins'] += 1
         
+        # Форматируем сообщение с реальным выигрышем
+        win_message = result_config["message"].format(prize=actual_prize)
+        
         result_text = (
-            f"{result_config['message']}\n\n"
-            f"💎 Текущий баланс: {user_data[user_id]['game_balance']} звезд\n"
-            f"📊 (Списано: {cost} звезд + Выигрыш: {win_amount} звезд)"
+            f"{win_message}\n\n"
+            f"💎 Текущий баланс: {user_data[user_id]['game_balance']} ⭐\n"
+            f"📊 (Списано: {cost} ⭐ + Выигрыш: {actual_prize} ⭐)"
         )
     else:
         # ПРОИГРЫШ
         result_text = (
             f"{result_config['message']}\n\n"
-            f"💎 Текущий баланс: {user_data[user_id]['game_balance']} звезд\n"
-            f"📊 (Списано: {cost} звезд)"
+            f"💎 Текущий баланс: {user_data[user_id]['game_balance']} ⭐\n"
+            f"📊 (Списано: {cost} ⭐)"
         )
-    
-    # ЖДЕМ ЗАВЕРШЕНИЯ АНИМАЦИИ (2.5 секунды)
-    await asyncio.sleep(2.5)
     
     # Отправляем результат
     await message.reply_text(result_text)
@@ -598,15 +683,13 @@ async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, m
     weekly_reward = update_daily_activity(user_id)
     if weekly_reward:
         user_data[user_id]['game_balance'] += weekly_reward
-        # Ждем еще немного перед отправкой награды
-        await asyncio.sleep(0.5)
         await message.reply_text(
             f"🎁 ЕЖЕНЕДЕЛЬНАЯ НАГРАДА!\n\n"
-            f"💰 Награда: {weekly_reward} звезд\n"
-            f"💎 Баланс: {user_data[user_id]['game_balance']} звезд"
+            f"💰 Награда: {weekly_reward} ⭐\n"
+            f"💎 Баланс: {user_data[user_id]['game_balance']} ⭐"
         )
 
-# 👑 АДМИН СИСТЕМА
+# 👑 АДМИН СИСТЕМА (остается без изменений)
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -647,7 +730,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 📊 Статистика бота:
 👤 Пользователей: {total_users}
 🎮 Всего игр: {total_games}
-💎 Общий баланс: {total_balance} звезд
+💎 Общий баланс: {total_balance} ⭐
 
 Доступные функции:
     """
@@ -690,8 +773,8 @@ async def admin_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 📈 Винрейт: {win_rate:.1f}%
 
 💎 Балансы:
-💰 Общий баланс: {total_balance} звезд
-💳 Пополнено: {total_deposited} звезд
+💰 Общий баланс: {total_balance} ⭐
+💳 Пополнено: {total_deposited} ⭐
 💵 Реальные деньги: {total_real_money} Stars
     """
     
@@ -714,7 +797,7 @@ async def admin_users_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     users_text = "👤 ТОП-10 ПОЛЬЗОВАТЕЛЕЙ ПО БАЛАНСУ:\n\n"
     
     for i, (uid, data) in enumerate(top_users, 1):
-        users_text += f"{i}. ID: {uid} | 💰: {data['game_balance']} | 🎮: {data['total_games']}\n"
+        users_text += f"{i}. ID: {uid} | 💰: {data['game_balance']} ⭐ | 🎮: {data['total_games']}\n"
     
     keyboard = [[InlineKeyboardButton("🔙 Назад в админку", callback_data="admin_back")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -738,7 +821,7 @@ async def admin_add_balance_callback(update: Update, context: ContextTypes.DEFAU
 Пример:
 `/addbalance 123456789 100`
 
-Это добавит 100 звезд пользователю с ID 123456789
+Это добавит 100 ⭐ пользователю с ID 123456789
     """
     
     keyboard = [[InlineKeyboardButton("🔙 Назад в админку", callback_data="admin_back")]]
@@ -845,7 +928,8 @@ async def admin_handle_game_selection(update: Update, context: ContextTypes.DEFA
     # Отправляем dice от имени бота
     dice_message = await context.bot.send_dice(chat_id=query.message.chat_id, emoji=emoji)
     
-    # Обрабатываем результат с задержкой
+    # Обрабатываем результат
+    current_bet = user_data[user_id]['current_bet']
     await process_dice_result(user_id, emoji, dice_message.dice.value, 0, dice_message, context)
 
 # 🔧 АДМИН КОМАНДЫ
@@ -877,8 +961,8 @@ async def add_balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     save_data()
     
     await update.message.reply_text(
-        f"✅ Баланс пользователя {target_user_id} пополнен на {amount} звезд\n"
-        f"💰 Новый баланс: {user_data[target_user_id]['game_balance']} звезд"
+        f"✅ Баланс пользователя {target_user_id} пополнен на {amount} ⭐\n"
+        f"💰 Новый баланс: {user_data[target_user_id]['game_balance']} ⭐"
     )
 
 # 🔄 ОБРАБОТЧИКИ КНОПОК
@@ -922,6 +1006,8 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         await handle_game_selection(update, context)
     elif callback_data == 'deposit':
         await deposit_callback(update, context)
+    elif callback_data == 'change_bet':
+        await change_bet_callback(update, context)
     elif callback_data == 'back_to_profile':
         await back_to_profile_callback(update, context)
 
@@ -959,6 +1045,7 @@ def main():
     application.add_handler(CommandHandler("activity", activity_command))
     application.add_handler(CommandHandler("admin", admin_command))
     application.add_handler(CommandHandler("addbalance", add_balance_command))
+    application.add_handler(CommandHandler("bet", bet_command))
     
     # CALLBACK'И
     application.add_handler(CallbackQueryHandler(handle_callback_query))
@@ -972,8 +1059,8 @@ def main():
     
     print("🎰 NSource Casino Bot запущен!")
     print("🎮 Доступные игры: 🎰 🎯 🎲 🎳 ⚽ 🏀")
-    print("💰 Каждое сообщение с dice обрабатывается и списывает 5 звезд!")
-    print("⏱️ Результат отправляется после завершения анимации!")
+    print("💰 Система с изменяемой ставкой от 1 до 100000 ⭐!")
+    print("⭐ Все выигрыши пропорциональны ставке!")
     application.run_polling()
 
 if __name__ == '__main__':
