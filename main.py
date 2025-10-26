@@ -20,12 +20,12 @@ MAX_BET = 100000
 
 # ⏱️ ВРЕМЯ АНИМАЦИИ ДЛЯ КАЖДОЙ ИГРЫ (в секундах)
 DICE_DELAYS = {
-    "🎰": 2.5,  # Слоты - самая долгая анимация
-    "🎯": 2.5,  # Дартс
-    "🎲": 2.5,  # Кубик
-    "🎳": 2.5,  # Боулинг
-    "⚽": 2.5,  # Футбол
-    "🏀": 2.5   # Баскетбол
+    "🎰": 2.2,  # Слоты - самая долгая анимация
+    "🎯": 2.4,  # Дартс
+    "🎲": 2.6,  # Кубик
+    "🎳": 3.0,  # Боулинг
+    "⚽": 2.6,  # Футбол
+    "🏀": 2.6   # Баскетбол
 }
 
 # 💰 ПАКЕТЫ ПОПОЛНЕНИЯ (1 реальная звезда = 1 игровая звезда)
@@ -243,24 +243,32 @@ def update_daily_activity(user_id: int):
     today = datetime.datetime.now().date()
     activity = user_activity[user_id]
     
-    if activity['last_play_date'] != today:
-        if activity['last_play_date'] and activity['plays_today'] >= 3:
-            activity['consecutive_days'] += 1
-        elif activity['last_play_date'] and (today - activity['last_play_date']).days > 1:
+    if activity['last_play_date'] != str(today):
+        if activity['last_play_date']:
+            last_play = datetime.datetime.fromisoformat(activity['last_play_date']).date()
+            if (today - last_play).days == 1 and activity['plays_today'] >= 3:
+                activity['consecutive_days'] += 1
+            elif (today - last_play).days > 1:
+                activity['consecutive_days'] = 0
+        else:
             activity['consecutive_days'] = 0
         
         activity['plays_today'] = 0
-        activity['last_play_date'] = today
+        activity['last_play_date'] = str(today)
+        activity['weekly_reward_claimed'] = False
     
     activity['plays_today'] += 1
     
+    # Проверяем условие для недельной награды
     if (activity['consecutive_days'] >= 7 and 
         activity['plays_today'] >= 3 and 
         not activity['weekly_reward_claimed']):
         
         reward = random.choice(WEEKLY_REWARDS)
+        user_data[user_id]['game_balance'] += reward
         activity['consecutive_days'] = 0
         activity['weekly_reward_claimed'] = True
+        save_data()
         return reward
     
     return None
@@ -285,12 +293,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 🎁 Система активности:
 Играй 3+ раза в день 7 дней подряд = случайный подарок (15-50 ⭐)
-
-Команды:
-/profile - Личный кабинет
-/deposit - Пополнить баланс  
-/activity - Моя активность
-/bet <сумма> - Изменить ставку
 
 Просто отправь любой dice эмодзи игры чтобы начать играть!
     """
@@ -346,6 +348,45 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(profile_text, reply_markup=reply_markup)
 
 # 💸 СИСТЕМА ВЫВОДА СРЕДСТВ
+async def withdraw_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда для вывода средств"""
+    user_id = update.effective_user.id
+    balance = user_data[user_id]['game_balance']
+    
+    if balance < MIN_WITHDRAWAL:
+        await update.message.reply_text(
+            f"❌ Недостаточно средств для вывода!\n\n"
+            f"💰 Ваш баланс: {balance} ⭐\n"
+            f"💸 Минимальная сумма вывода: {MIN_WITHDRAWAL} ⭐\n\n"
+            f"Пополните баланс или выиграйте больше звезд!"
+        )
+        return
+    
+    withdraw_text = f"""
+💸 Вывод средств
+
+💰 Ваш баланс: {balance} ⭐
+💸 Минимальная сумма вывода: {MIN_WITHDRAWAL} ⭐
+
+🎁 При выводе средств вы получаете случайные подарки за реальные Telegram Stars!
+
+Выберите сумму для вывода:
+    """
+    
+    keyboard = []
+    for amount in WITHDRAWAL_AMOUNTS:
+        if balance >= amount:
+            keyboard.append([InlineKeyboardButton(f"{amount} ⭐", callback_data=f"withdraw_{amount}")])
+    
+    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_profile")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if update.callback_query:
+        await update.callback_query.edit_message_text(withdraw_text, reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(withdraw_text, reply_markup=reply_markup)
+
 async def withdraw_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -670,7 +711,7 @@ async def play_games_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 💎 Баланс: {balance} ⭐
 🎯 Текущая ставка: {current_bet} ⭐
-📊 Диапазон ставок: {MIN_BET}-{MAX_BET} ⭐
+📊 Диапазон ставки: {MIN_BET}-{MAX_BET} ⭐
 
 Выберите игру или просто отправь любой dice эмодзи в чат!
     """
@@ -817,8 +858,7 @@ async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, m
         result_config = {"win": False, "base_prize": 0, "message": f"{emoji} - проигрыш"}
     
     # ВЫЧИСЛЯЕМ РЕАЛЬНЫЙ ВЫИГРЫШ НА ОСНОВЕ СТАВКИ
-    current_bet = user_data[user_id]['current_bet']
-    actual_prize = result_config["base_prize"] * current_bet
+    actual_prize = result_config["base_prize"] * (cost if not admin_mode.get(user_id, False) else user_data[user_id]['current_bet'])
     
     result_text = ""
     
@@ -1919,6 +1959,41 @@ async def handle_admin_callback_query(update: Update, context: ContextTypes.DEFA
         context.user_data['admin_users_page'] = page
         await admin_users_callback(update, context)
 
+# 🆘 КОМАНДА ПОМОЩИ
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    help_text = """
+🎰 *NSource Casino - Помощь*
+
+*Основные команды:*
+/start - Начать работу с ботом
+/profile - Ваш профиль и статистика  
+/deposit - Пополнить баланс
+/withdraw - Вывести средства
+/activity - Ваша активность
+/bet [сумма] - Изменить ставку
+/help - Эта справка
+
+*Как играть:*
+1. Пополните баланс через /deposit
+2. Установите ставку через /bet
+3. Отправьте любой dice-эмодзи или используйте кнопки
+4. Выигрывайте и увеличивайте баланс!
+
+*Доступные игры:*
+🎰 Слоты - 64 комбинации, 4 выигрышных
+🎯 Дартс - Победа на 6
+🎲 Кубик - Победа на 6  
+🎳 Боулинг - Победа на 6
+⚽ Футбол - Победа на 5
+🏀 Баскетбол - Победа на 5
+
+*Вывод средств:*
+Минимальная сумма: 15 ⭐
+1 подарок за каждые 15 ⭐
+    """
+    
+    await update.message.reply_text(help_text, parse_mode='Markdown')
+
 # 🔧 ОБНОВЛЕННЫЙ ОБРАБОТЧИК CALLBACK QUERY
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1961,6 +2036,25 @@ def run_flask():
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
 
+# 📝 УСТАНОВКА ПОДСКАЗОК КОМАНД
+async def set_bot_commands(application):
+    """Установка подсказок команд для бота"""
+    commands = [
+        ("start", "🚀 Запустить бота"),
+        ("profile", "📊 Личный кабинет"),
+        ("deposit", "💰 Пополнить баланс"),
+        ("withdraw", "💸 Вывести средства"),
+        ("activity", "📈 Моя активность"),
+        ("bet", "🎯 Изменить ставку"),
+        ("help", "🆘 Помощь по командам"),
+        ("admin", "👑 Админ панель")
+    ]
+    
+    from telegram import BotCommand
+    await application.bot.set_my_commands(
+        [BotCommand(command, description) for command, description in commands]
+    )
+
 # 🚀 ЗАПУСК БОТА
 def main():
     load_data()
@@ -1972,12 +2066,17 @@ def main():
     
     application = Application.builder().token(BOT_TOKEN).build()
     
+    # Установка подсказок команд при запуске
+    application.post_init = set_bot_commands
+    
     # ОСНОВНЫЕ КОМАНДЫ
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("profile", profile))
     application.add_handler(CommandHandler("deposit", deposit_command))
+    application.add_handler(CommandHandler("withdraw", withdraw_command))  # ДОБАВЛЕНО
     application.add_handler(CommandHandler("activity", activity_command))
     application.add_handler(CommandHandler("bet", bet_command))
+    application.add_handler(CommandHandler("help", help_command))  # ДОБАВЛЕНО
     
     # АДМИН КОМАНДЫ
     application.add_handler(CommandHandler("admin", admin_command))
@@ -2013,6 +2112,7 @@ def main():
     print("💸 Полная система вывода средств!")
     print("👑 Расширенная админ-панель с подробными командами!")
     print("⏱️ Оптимизированные задержки для каждой игры!")
+    print("📝 Подсказки команд активированы!")
     application.run_polling()
 
 if __name__ == '__main__':
