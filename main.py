@@ -16,6 +16,7 @@ research_data = {
 }
 
 user_stats = defaultdict(lambda: {'total_games': 0})
+active_sessions = {}
 
 # 👤 ОСНОВНЫЕ КОМАНДЫ
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -62,6 +63,7 @@ async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     research_data["🏀"].clear()
     research_data["⚽"].clear()
     user_stats.clear()
+    active_sessions.clear()
     await update.message.reply_text("✅ Статистика очищена!")
 
 # 🎮 ОБРАБОТКА ИГР
@@ -76,13 +78,18 @@ async def handle_game_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_stats[user_id]['total_games'] += 1
     
     # Сохраняем информацию о текущей игре
-    context.user_data['expecting_dice'] = True
-    context.user_data['last_game_emoji'] = emoji
-    context.user_data['last_game_user_id'] = user_id
+    chat_id = update.message.chat_id
+    active_sessions[chat_id] = {
+        'emoji': emoji,
+        'user_id': user_id,
+        'waiting_for_dice': True
+    }
     
     # Отправляем dice
-    dice_message = await context.bot.send_dice(chat_id=update.message.chat_id, emoji=emoji)
-    context.user_data['last_dice_message_id'] = dice_message.message_id
+    dice_message = await context.bot.send_dice(chat_id=chat_id, emoji=emoji)
+    
+    # Сохраняем ID dice сообщения для отслеживания
+    active_sessions[chat_id]['dice_message_id'] = dice_message.message_id
     
     game_name = "БАСКЕТБОЛ" if emoji == "🏀" else "ФУТБОЛ"
     await update.message.reply_text(
@@ -93,15 +100,19 @@ async def handle_game_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 # 📊 ОБРАБОТКА РЕЗУЛЬТАТОВ DICE
 async def handle_dice_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
-    user_id = message.from_user.id
+    chat_id = message.chat_id
     
     if not message.dice:
         return
     
-    if not context.user_data.get('expecting_dice', False):
+    # Проверяем, есть ли активная сессия для этого чата
+    if chat_id not in active_sessions:
         return
     
-    if context.user_data.get('last_game_user_id') != user_id:
+    session = active_sessions[chat_id]
+    
+    # Проверяем, что это то же самое dice сообщение, которое мы отправили
+    if message.message_id != session.get('dice_message_id'):
         return
     
     emoji = message.dice.emoji
@@ -115,7 +126,7 @@ async def handle_dice_result(update: Update, context: ContextTypes.DEFAULT_TYPE)
             game_data[value]['first_seen'] = datetime.datetime.now().isoformat()
         
         game_data[value]['count'] += 1
-        game_data[value]['users'].add(user_id)
+        game_data[value]['users'].add(session['user_id'])
         
         # Формируем сообщение с результатом
         game_name = "БАСКЕТБОЛ" if emoji == "🏀" else "ФУТБОЛ"
@@ -130,11 +141,8 @@ async def handle_dice_result(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         await message.reply_text(result_text)
     
-    # Очищаем контекст
-    context.user_data.pop('expecting_dice', None)
-    context.user_data.pop('last_game_emoji', None)
-    context.user_data.pop('last_dice_message_id', None)
-    context.user_data.pop('last_game_user_id', None)
+    # Очищаем сессию
+    del active_sessions[chat_id]
 
 # 🌐 FLASK ДЛЯ RAILWAY
 app = Flask(__name__)
