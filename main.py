@@ -1,3 +1,4 @@
+import asyncio
 import os
 import json
 import random
@@ -509,7 +510,7 @@ async def handle_game_selection(update: Update, context: ContextTypes.DEFAULT_TY
     # Отправляем dice от имени бота
     dice_message = await context.bot.send_dice(chat_id=query.message.chat_id, emoji=emoji)
     
-    # Обрабатываем результат сразу
+    # Обрабатываем результат сразу, но с задержкой
     await process_dice_result(user_id, emoji, dice_message.dice.value, GAME_COST if not admin_mode.get(user_id, False) else 0, dice_message, context)
     
     save_data()
@@ -550,12 +551,12 @@ async def handle_user_dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data[user_id]['total_games'] += 1
     user_data[user_id]['last_activity'] = datetime.datetime.now().isoformat()
     
-    # Обрабатываем результат
+    # Обрабатываем результат с задержкой
     await process_dice_result(user_id, emoji, value, cost, message, context)
     
     save_data()
 
-# 🎯 ОБРАБОТКА РЕЗУЛЬТАТА DICE
+# 🎯 ОБРАБОТКА РЕЗУЛЬТАТА DICE С ЗАДЕРЖКОЙ
 async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, message, context: ContextTypes.DEFAULT_TYPE):
     game_config = GAMES_CONFIG.get(emoji)
     if not game_config:
@@ -587,6 +588,9 @@ async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, m
             f"📊 (Списано: {cost} звезд)"
         )
     
+    # ЖДЕМ ЗАВЕРШЕНИЯ АНИМАЦИИ (2.5 секунды)
+    await asyncio.sleep(2.5)
+    
     # Отправляем результат
     await message.reply_text(result_text)
     
@@ -594,6 +598,8 @@ async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, m
     weekly_reward = update_daily_activity(user_id)
     if weekly_reward:
         user_data[user_id]['game_balance'] += weekly_reward
+        # Ждем еще немного перед отправкой награды
+        await asyncio.sleep(0.5)
         await message.reply_text(
             f"🎁 ЕЖЕНЕДЕЛЬНАЯ НАГРАДА!\n\n"
             f"💰 Награда: {weekly_reward} звезд\n"
@@ -839,7 +845,7 @@ async def admin_handle_game_selection(update: Update, context: ContextTypes.DEFA
     # Отправляем dice от имени бота
     dice_message = await context.bot.send_dice(chat_id=query.message.chat_id, emoji=emoji)
     
-    # Обрабатываем результат
+    # Обрабатываем результат с задержкой
     await process_dice_result(user_id, emoji, dice_message.dice.value, 0, dice_message, context)
 
 # 🔧 АДМИН КОМАНДЫ
@@ -967,6 +973,7 @@ def main():
     print("🎰 NSource Casino Bot запущен!")
     print("🎮 Доступные игры: 🎰 🎯 🎲 🎳 ⚽ 🏀")
     print("💰 Каждое сообщение с dice обрабатывается и списывает 5 звезд!")
+    print("⏱️ Результат отправляется после завершения анимации!")
     application.run_polling()
 
 if __name__ == '__main__':
