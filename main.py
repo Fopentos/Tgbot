@@ -44,7 +44,7 @@ PRODUCTS = {
 MIN_WITHDRAWAL = 15
 WITHDRAWAL_AMOUNTS = [15, 25, 50, 100]
 
-# 🎮 БАЗОВЫЕ ВЫИГРЫШИ ДЛЯ СТАВКИ 1 ⭐ (ОБНОВЛЕННЫЕ ДЛЯ СЛОТОВ)
+# 🎮 БАЗОВЫЕ ВЫИГРЫШИ ДЛЯ СТАВКИ 1 ⭐ (ОПТИМИЗИРОВАННЫЕ ДЛЯ RTP 65-70%)
 BASE_PRIZES = {
     "🎰": {
         "ТРИ БАРА": 5,
@@ -55,11 +55,37 @@ BASE_PRIZES = {
     "🎯": {"ПОПАДАНИЕ В ЦЕЛЬ": 3},
     "🎲": {"ВЫПАЛО 6": 3},
     "🎳": {"СТРАЙК": 3},
-    "⚽": {"ГОООЛ": 3},
-    "🏀": {"ПОПАДАНИЕ": 3}
+    "⚽": {
+        "СЛАБЫЙ УДАР": 0.1,
+        "УДАР МИМО": 0.2,
+        "БЛИЗКИЙ УДАР": 0.5,
+        "ХОРОШИЙ ГОЛ": 1.2,
+        "СУПЕРГОЛ": 1.5
+    },
+    "🏀": {
+        "ПРОМАХ": 0.1,
+        "КАСАТЕЛЬНО": 0.15,
+        "ОТСКОК": 0.2,
+        "ТРЕХОЧКОВЫЙ": 1.4,
+        "СЛЭМ-ДАНК": 1.4
+    }
 }
 
-# 🎮 ПОЛНАЯ КОНФИГУРАЦИЯ ИГР (ВСЕ 64 КОМБИНАЦИИ ДЛЯ СЛОТОВ) - ОБНОВЛЕННЫЕ ПРИЗЫ
+# 🎰 СИСТЕМА СЕРИЙ ПОБЕД
+WIN_STREAK_BONUSES = {
+    3: {"multiplier": 1.2, "message": "🔥 Серия из 3 побед! Бонус +20% к выигрышу!"},
+    5: {"multiplier": 1.5, "message": "🔥🔥 Серия из 5 побед! Бонус +50% к выигрышу!"},
+    10: {"multiplier": 2.0, "message": "🔥🔥🔥 СЕРИЯ ИЗ 10 ПОБЕД! МЕГА БОНУС +100% к выигрышу!"}
+}
+
+# 🎁 СИСТЕМА СЛУЧАЙНЫХ МЕГА-ВЫИГРЫШЕЙ
+MEGA_WIN_CONFIG = {
+    "chance": 0.02,  # 2% шанс на мега-выигрыш
+    "min_multiplier": 2,
+    "max_multiplier": 10
+}
+
+# 🎮 ПОЛНАЯ КОНФИГУРАЦИЯ ИГР (ОБНОВЛЕННАЯ ДЛЯ RTP 65-75%)
 GAMES_CONFIG = {
     "🎰": {
         "values": {
@@ -165,22 +191,22 @@ GAMES_CONFIG = {
     },
     "⚽": {
         "values": {
-            # ФУТБОЛ - 5 значений, 1 выигрышное (5)
-            1: {"win": False, "base_prize": 0, "message": "⚽ - проигрыш"},
-            2: {"win": False, "base_prize": 0, "message": "⚽ - проигрыш"},
-            3: {"win": True, "base_prize": BASE_PRIZES["⚽"]["ГОООЛ"], "message": "⚽ - ГОООЛ! Выигрыш: {prize} ⭐"},
-            4: {"win": True, "base_prize": BASE_PRIZES["⚽"]["ГОООЛ"], "message": "⚽ - ГОООЛ! Выигрыш: {prize} ⭐"},
-            5: {"win": True, "base_prize": BASE_PRIZES["⚽"]["ГОООЛ"], "message": "⚽ - ГОООЛ! Выигрыш: {prize} ⭐"}
+            # ФУТБОЛ - 5 значений, ВСЕ возвращают часть ставки (RTP ~70%)
+            1: {"win": True, "base_prize": BASE_PRIZES["⚽"]["СЛАБЫЙ УДАР"], "message": "⚽ Слабый удар... Возврат: {prize} ⭐"},
+            2: {"win": True, "base_prize": BASE_PRIZES["⚽"]["УДАР МИМО"], "message": "⚽ Удар мимо ворот... Возврат: {prize} ⭐"},
+            3: {"win": True, "base_prize": BASE_PRIZES["⚽"]["БЛИЗКИЙ УДАР"], "message": "⚽ Близко к воротам! Возврат: {prize} ⭐"},
+            4: {"win": True, "base_prize": BASE_PRIZES["⚽"]["ХОРОШИЙ ГОЛ"], "message": "⚽ ГОООЛ! Выигрыш: {prize} ⭐"},
+            5: {"win": True, "base_prize": BASE_PRIZES["⚽"]["СУПЕРГОЛ"], "message": "⚽ СУПЕРГОООЛ! МЕГА ВЫИГРЫШ: {prize} ⭐"}
         }
     },
     "🏀": {
         "values": {
-            # БАСКЕТБОЛ - 5 значений, 1 выигрышное (5)
-            1: {"win": False, "base_prize": 0, "message": "🏀 - проигрыш"},
-            2: {"win": False, "base_prize": 0, "message": "🏀 - проигрыш"},
-            3: {"win": False, "base_prize": 0, "message": "🏀 - проигрыш"},
-            4: {"win": True, "base_prize": BASE_PRIZES["🏀"]["ПОПАДАНИЕ"], "message": "🏀 - ПОПАДАНИЕ! Выигрыш: {prize} ⭐"}, 
-            5: {"win": True, "base_prize": BASE_PRIZES["🏀"]["ПОПАДАНИЕ"], "message": "🏀 - ПОПАДАНИЕ! Выигрыш: {prize} ⭐"}
+            # БАСКЕТБОЛ - 5 значений, ВСЕ возвращают часть ставки (RTP ~65%)
+            1: {"win": True, "base_prize": BASE_PRIZES["🏀"]["ПРОМАХ"], "message": "🏀 Промах... Возврат: {prize} ⭐"},
+            2: {"win": True, "base_prize": BASE_PRIZES["🏀"]["КАСАТЕЛЬНО"], "message": "🏀 Коснулось кольца... Возврат: {prize} ⭐"},
+            3: {"win": True, "base_prize": BASE_PRIZES["🏀"]["ОТСКОК"], "message": "🏀 Отскок от щита! Возврат: {prize} ⭐"},
+            4: {"win": True, "base_prize": BASE_PRIZES["🏀"]["ТРЕХОЧКОВЫЙ"], "message": "🏀 Трехочковый! Выигрыш: {prize} ⭐"},
+            5: {"win": True, "base_prize": BASE_PRIZES["🏀"]["СЛЭМ-ДАНК"], "message": "🏀 СЛЭМ-ДАНК! МЕГА ВЫИГРЫШ: {prize} ⭐"}
         }
     }
 }
@@ -268,7 +294,11 @@ user_data = defaultdict(lambda: {
     'current_bet': 5,
     'registration_date': datetime.datetime.now().isoformat(),
     'last_activity': datetime.datetime.now().isoformat(),
-    'slots_mode': 'normal'  # 'normal' или '777'
+    'slots_mode': 'normal',  # 'normal' или '777'
+    'win_streak': 0,  # Текущая серия побед
+    'max_win_streak': 0,  # Максимальная серия побед
+    'mega_wins_count': 0,  # Количество мега-выигрышей
+    'total_mega_win_amount': 0  # Общая сумма мега-выигрышей
 })
 
 user_activity = defaultdict(lambda: {
@@ -347,6 +377,45 @@ def update_daily_activity(user_id: int):
     
     return None
 
+# 🎰 СИСТЕМА СЕРИЙ ПОБЕД И МЕГА-ВЫИГРЫШЕЙ
+def calculate_win_bonuses(user_id: int, base_prize: float, bet: int) -> tuple:
+    """
+    Рассчитывает бонусы за серии побед и случайные мега-выигрыши
+    Возвращает: (финальный_приз, сообщения_о_бонусах)
+    """
+    user = user_data[user_id]
+    bonus_messages = []
+    final_prize = base_prize * bet
+    
+    # 🔥 СИСТЕМА СЕРИЙ ПОБЕД
+    if base_prize > 0:  # Если это выигрыш
+        user['win_streak'] += 1
+        user['max_win_streak'] = max(user['max_win_streak'], user['win_streak'])
+        
+        # Проверяем бонусы за серии
+        for streak, bonus in WIN_STREAK_BONUSES.items():
+            if user['win_streak'] == streak:
+                streak_multiplier = bonus["multiplier"]
+                final_prize *= streak_multiplier
+                bonus_messages.append(bonus["message"])
+                break
+    else:
+        # Сбрасываем серию при проигрыше
+        if user['win_streak'] > 0:
+            bonus_messages.append(f"💔 Серия побед прервана на {user['win_streak']}!")
+        user['win_streak'] = 0
+    
+    # 🎰 СИСТЕМА СЛУЧАЙНЫХ МЕГА-ВЫИГРЫШЕЙ
+    if base_prize > 0 and random.random() < MEGA_WIN_CONFIG["chance"]:
+        mega_multiplier = random.randint(MEGA_WIN_CONFIG["min_multiplier"], MEGA_WIN_CONFIG["max_multiplier"])
+        final_prize *= mega_multiplier
+        user['mega_wins_count'] += 1
+        user['total_mega_win_amount'] += final_prize - (base_prize * bet)
+        
+        bonus_messages.append(f"🎉 МЕГА-ВЫИГРЫШ! x{mega_multiplier} к выигрышу!")
+    
+    return final_prize, bonus_messages
+
 # 👤 ОСНОВНЫЕ КОМАНДЫ
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = """
@@ -354,14 +423,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Добро пожаловать в казино!
 
+🎮 Новые системы:
+🔥 Серии побед - получайте бонусы за несколько побед подряд
+🎉 Случайные мега-выигрыши - шанс увеличить выигрыш в 2-10 раз!
+
 Доступные игры (ставка от 1 до 100000 ⭐):
 🎰 Слоты - 64 комбинации, 4 выигрышных (5-20x ставки)
 🎰 Слоты 777 - только джекпот 777 (50x ставки)
 🎯 Дартс - победа на 6 (3x ставки)
 🎲 Кубик - победа на 6 (3x ставки)
 🎳 Боулинг - победа на 6 (3x ставки)
-⚽ Футбол - победа на 5 (3x ставки)
-🏀 Баскетбол - победа на 5 (3x ставки)
+⚽ Футбол - 5 исходов с разными множителями (RTP ~70%)
+🏀 Баскетбол - 5 исходов с разными множителями (RTP ~65%)
 
 💰 Пополнение: 1:1
 1 реальная звезда = 1 ⭐
@@ -408,6 +481,12 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🏆 Побед: {data['total_wins']}
 📈 Винрейт: {win_rate:.1f}%
 💳 Пополнено: {data['total_deposited']} ⭐
+
+🔥 Система бонусов:
+📊 Текущая серия побед: {data['win_streak']}
+🏆 Максимальная серия: {data['max_win_streak']}
+🎉 Мега-выигрышей: {data['mega_wins_count']}
+💫 Сумма мега-выигрышей: {data['total_mega_win_amount']} ⭐
     """
     
     keyboard = [
@@ -798,6 +877,10 @@ async def play_games_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 🎰 Режим слотов: {slots_mode_text}
 📊 Диапазон ставки: {MIN_BET}-{MAX_BET} ⭐
 
+🎁 Новые системы:
+🔥 Серии побед - бонусы за несколько побед подряд
+🎉 Случайные мега-выигрыши - шанс x2-x10!
+
 Выберите игру или просто отправь любой dice эмодзи в чат!
     """
     
@@ -807,8 +890,8 @@ async def play_games_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton("🎯 Дартс", callback_data="play_dart")],
         [InlineKeyboardButton("🎲 Кубик", callback_data="play_dice")],
         [InlineKeyboardButton("🎳 Боулинг", callback_data="play_bowling")],
-        [InlineKeyboardButton("⚽ Футбол", callback_data="play_football")],
-        [InlineKeyboardButton("🏀 Баскетбол", callback_data="play_basketball")],
+        [InlineKeyboardButton("⚽ Футбол (5 исходов)", callback_data="play_football")],
+        [InlineKeyboardButton("🏀 Баскетбол (5 исходов)", callback_data="play_basketball")],
         [InlineKeyboardButton("🎯 Изменить ставку", callback_data="change_bet")],
         [InlineKeyboardButton("💰 Пополнить баланс", callback_data="deposit")],
         [InlineKeyboardButton("📊 Личный кабинет", callback_data="back_to_profile")]
@@ -947,7 +1030,7 @@ async def handle_user_dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     save_data()
 
-# 🎯 ОБРАБОТКА РЕЗУЛЬТАТА DICE С ПРОПОРЦИОНАЛЬНЫМИ ВЫИГРЫШАМИ
+# 🎯 ОБРАБОТКА РЕЗУЛЬТАТА DICE С НОВЫМИ СИСТЕМАМИ
 async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, message, context: ContextTypes.DEFAULT_TYPE):
     # Определяем режим слотов пользователя
     slots_mode = user_data[user_id].get('slots_mode', 'normal')
@@ -966,24 +1049,31 @@ async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, m
     if not result_config:
         result_config = {"win": False, "base_prize": 0, "message": f"{emoji} - проигрыш"}
     
-    # ВЫЧИСЛЯЕМ РЕАЛЬНЫЙ ВЫИГРЫШ НА ОСНОВЕ СТАВКИ
-    actual_prize = result_config["base_prize"] * (cost if not admin_mode.get(user_id, False) else user_data[user_id]['current_bet'])
+    # ВЫЧИСЛЯЕМ БАЗОВЫЙ ВЫИГРЫШ
+    base_prize_amount = result_config["base_prize"]
+    
+    # 🎰 ПРИМЕНЯЕМ СИСТЕМЫ БОНУСОВ
+    final_prize, bonus_messages = calculate_win_bonuses(user_id, base_prize_amount, cost)
     
     result_text = ""
     
     if result_config["win"]:
         # ВЫИГРЫШ
-        user_data[user_id]['game_balance'] += actual_prize
+        user_data[user_id]['game_balance'] += final_prize
         user_data[user_id]['total_wins'] += 1
         
         # Форматируем сообщение с реальным выигрышем
-        win_message = result_config["message"].format(prize=actual_prize)
+        win_message = result_config["message"].format(prize=final_prize)
         
         result_text = (
             f"{win_message}\n\n"
             f"💎 Текущий баланс: {user_data[user_id]['game_balance']} ⭐\n"
-            f"📊 (Списано: {cost} ⭐ + Выигрыш: {actual_prize} ⭐)"
+            f"📊 (Списано: {cost} ⭐ + Выигрыш: {final_prize} ⭐)"
         )
+        
+        # Добавляем сообщения о бонусах
+        if bonus_messages:
+            result_text += "\n\n" + "\n".join(bonus_messages)
     else:
         # ПРОИГРЫШ
         result_text = (
@@ -991,6 +1081,10 @@ async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, m
             f"💎 Текущий баланс: {user_data[user_id]['game_balance']} ⭐\n"
             f"📊 (Списано: {cost} ⭐)"
         )
+        
+        # Добавляем сообщение о прерванной серии
+        if bonus_messages:
+            result_text += "\n\n" + "\n".join(bonus_messages)
     
     # Отправляем результат
     await message.reply_text(result_text)
@@ -1074,6 +1168,11 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_balance = sum(data['game_balance'] for data in user_data.values())
     total_deposited = sum(data['total_deposited'] for data in user_data.values())
     
+    # Новая статистика по системам бонусов
+    total_win_streaks = sum(data['max_win_streak'] for data in user_data.values())
+    total_mega_wins = sum(data['mega_wins_count'] for data in user_data.values())
+    total_mega_amount = sum(data['total_mega_win_amount'] for data in user_data.values())
+    
     admin_text = f"""
 👑 АДМИН ПАНЕЛЬ - ПАНЕЛЬ УПРАВЛЕНИЯ
 
@@ -1082,6 +1181,11 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🎮 Всего игр: {total_games}
 💎 Общий баланс: {total_balance} ⭐
 💳 Пополнено всего: {total_deposited} ⭐
+
+🎰 СИСТЕМЫ БОНУСОВ:
+🔥 Макс. серии побед: {total_win_streaks}
+🎉 Мега-выигрышей: {total_mega_wins}
+💫 Сумма мега-выигрышей: {total_mega_amount} ⭐
 
 ⚡ БЫСТРЫЙ ДОСТУП:
     """
@@ -1120,7 +1224,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(admin_text, reply_markup=reply_markup)
 
-# 📊 РАСШИРЕННАЯ СТАТИСТИКА
+# 📊 РАСШИРЕННАЯ СТАТИСТИКА С НОВЫМИ СИСТЕМАМИ
 async def admin_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1136,10 +1240,16 @@ async def admin_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     total_deposited = sum(data['total_deposited'] for data in user_data.values())
     total_real_money = sum(data['real_money_spent'] for data in user_data.values())
     
-    # Статистика по играм
-    game_stats = defaultdict(int)
-    for data in user_data.values():
-        game_stats['total_bet'] += data.get('current_bet', 0) * data.get('total_games', 0)
+    # Статистика по новым системам
+    total_win_streaks = sum(data['max_win_streak'] for data in user_data.values())
+    total_mega_wins = sum(data['mega_wins_count'] for data in user_data.values())
+    total_mega_amount = sum(data['total_mega_win_amount'] for data in user_data.values())
+    avg_win_streak = total_win_streaks / total_users if total_users > 0 else 0
+    
+    # Расчет RTP (Return to Player)
+    total_bet_amount = sum(data['current_bet'] * data['total_games'] for data in user_data.values())
+    total_win_amount = total_balance + total_deposited  # Упрощенный расчет
+    rtp = (total_win_amount / total_bet_amount * 100) if total_bet_amount > 0 else 0
     
     win_rate = (total_wins / total_games * 100) if total_games > 0 else 0
     
@@ -1147,6 +1257,10 @@ async def admin_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     richest_user = max(user_data.items(), key=lambda x: x[1]['game_balance'], default=(0, {'game_balance': 0}))
     # Самый активный пользователь
     most_active = max(user_data.items(), key=lambda x: x[1]['total_games'], default=(0, {'total_games': 0}))
+    # Лучшая серия побед
+    best_streak_user = max(user_data.items(), key=lambda x: x[1]['max_win_streak'], default=(0, {'max_win_streak': 0}))
+    # Больше всего мега-выигрышей
+    most_mega_wins = max(user_data.items(), key=lambda x: x[1]['mega_wins_count'], default=(0, {'mega_wins_count': 0}))
     
     stats_text = f"""
 📊 ДЕТАЛЬНАЯ СТАТИСТИКА БОТА
@@ -1159,7 +1273,8 @@ async def admin_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 • Всего игр: {total_games}
 • Всего побед: {total_wins}
 • Общий винрейт: {win_rate:.1f}%
-• Средняя ставка: {game_stats['total_bet'] // total_games if total_games > 0 else 0} ⭐
+• RTP (Return to Player): {rtp:.1f}%
+• Средняя ставка: {total_bet_amount // total_games if total_games > 0 else 0} ⭐
 
 💰 ФИНАНСЫ:
 • Общий баланс: {total_balance} ⭐
@@ -1167,9 +1282,17 @@ async def admin_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 • Реальные деньги: {total_real_money} Stars
 • Прибыль: {total_real_money - total_balance} Stars
 
+🎰 СИСТЕМЫ БОНУСОВ:
+• Всего серий побед: {total_win_streaks}
+• Средняя серия: {avg_win_streak:.1f}
+• Мега-выигрышей: {total_mega_wins}
+• Сумма мега-выигрышей: {total_mega_amount} ⭐
+
 🏆 РЕКОРДЫ:
 • Самый богатый: {richest_user[0]} ({richest_user[1]['game_balance']} ⭐)
 • Самый активный: {most_active[0]} ({most_active[1]['total_games']} игр)
+• Лучшая серия: {best_streak_user[0]} ({best_streak_user[1]['max_win_streak']} побед)
+• Лидер мега-выигрышей: {most_mega_wins[0]} ({most_mega_wins[1]['mega_wins_count']} раз)
     """
     
     keyboard = [[InlineKeyboardButton("🔙 Назад в админку", callback_data="admin_back")]]
@@ -1177,7 +1300,7 @@ async def admin_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     
     await query.edit_message_text(stats_text, reply_markup=reply_markup)
 
-# 👥 УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ
+# 👥 УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ (с новой статистикой)
 async def admin_users_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1199,7 +1322,7 @@ async def admin_users_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     users_text = f"👥 СПИСОК ПОЛЬЗОВАТЕЛЕЙ (Страница {page + 1}/{total_pages})\n\n"
     
     for i, (uid, data) in enumerate(page_users, start_idx + 1):
-        users_text += f"{i}. ID: {uid} | 💰: {data['game_balance']} ⭐ | 🎮: {data['total_games']}\n"
+        users_text += f"{i}. ID: {uid} | 💰: {data['game_balance']} ⭐ | 🎮: {data['total_games']} | 🔥: {data['win_streak']} | 🎉: {data['mega_wins_count']}\n"
     
     keyboard = []
     # Кнопки пагинации
@@ -1218,7 +1341,7 @@ async def admin_users_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(users_text, reply_markup=reply_markup)
 
-# 🏆 ТОП ИГРОКОВ
+# 🏆 ТОП ИГРОКОВ (с новыми категориями)
 async def admin_top_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1233,6 +1356,10 @@ async def admin_top_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     top_games = sorted(user_data.items(), key=lambda x: x[1]['total_games'], reverse=True)[:10]
     # Топ по выигрышам
     top_wins = sorted(user_data.items(), key=lambda x: x[1]['total_wins'], reverse=True)[:10]
+    # Топ по сериям побед
+    top_streaks = sorted(user_data.items(), key=lambda x: x[1]['max_win_streak'], reverse=True)[:10]
+    # Топ по мега-выигрышам
+    top_mega_wins = sorted(user_data.items(), key=lambda x: x[1]['mega_wins_count'], reverse=True)[:10]
     
     top_text = "🏆 ТОП ИГРОКОВ\n\n"
     
@@ -1248,6 +1375,14 @@ async def admin_top_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     for i, (uid, data) in enumerate(top_wins, 1):
         win_rate = (data['total_wins'] / data['total_games'] * 100) if data['total_games'] > 0 else 0
         top_text += f"{i}. ID: {uid} - {data['total_wins']} побед ({win_rate:.1f}%)\n"
+    
+    top_text += "\n🔥 ПО СЕРИЯМ ПОБЕД:\n"
+    for i, (uid, data) in enumerate(top_streaks, 1):
+        top_text += f"{i}. ID: {uid} - {data['max_win_streak']} побед подряд\n"
+    
+    top_text += "\n🎉 ПО МЕГА-ВЫИГРЫШАМ:\n"
+    for i, (uid, data) in enumerate(top_mega_wins, 1):
+        top_text += f"{i}. ID: {uid} - {data['mega_wins_count']} мега-выигрышей\n"
     
     keyboard = [
         [InlineKeyboardButton("📊 Общая статистика", callback_data="admin_stats")],
@@ -1270,6 +1405,11 @@ async def admin_broadcast_callback(update: Update, context: ContextTypes.DEFAULT
 📢 СИСТЕМА РАССЫЛКИ
 
 Отправьте сообщение, которое будет разослано всем пользователям бота.
+
+🎰 НОВЫЕ ВОЗМОЖНОСТИ:
+• Серии побед с бонусами
+• Случайные мега-выигрыши
+• Обновленные игры ⚽ и 🏀
 
 ⚠️ ВНИМАНИЕ: 
 • Рассылка может занять несколько минут
@@ -1334,11 +1474,15 @@ async def admin_search_callback(update: Update, context: ContextTypes.DEFAULT_TY
 /searchid <user_id> - Найти по ID
 /searchname <имя> - Найти по имени (частичное совпадение)
 /searchbalance <min> <max> - Найти по диапазону баланса
+/searchstreak <min_streak> - Найти по минимальной серии побед
+/searchmega <min_mega> - Найти по минимальному количеству мега-выигрышей
 
 Примеры:
 /searchid 123456789
 /searchname John
 /searchbalance 100 1000
+/searchstreak 5
+/searchmega 3
     """
     
     keyboard = [
@@ -1388,6 +1532,11 @@ async def admin_system_callback(update: Update, context: ContextTypes.DEFAULT_TY
 📊 ПРОИЗВОДИТЕЛЬНОСТЬ:
 • Загрузка CPU: {psutil.cpu_percent()}%
 • Использование RAM: {psutil.virtual_memory().used // (1024**3)}GB/{psutil.virtual_memory().total // (1024**3)}GB
+
+🎰 СИСТЕМЫ БОНУСОВ:
+• Шанс мега-выигрыша: {MEGA_WIN_CONFIG['chance']*100}%
+• Множитель мега-выигрыша: {MEGA_WIN_CONFIG['min_multiplier']}-{MEGA_WIN_CONFIG['max_multiplier']}x
+• Бонусы за серии: {len(WIN_STREAK_BONUSES)} уровней
     """
     
     keyboard = [
@@ -1486,6 +1635,8 @@ async def admin_backup_callback(update: Update, context: ContextTypes.DEFAULT_TY
 • Пользователей: {len(user_data)}
 • Игр: {sum(data['total_games'] for data in user_data.values())}
 • Общий баланс: {sum(data['game_balance'] for data in user_data.values())} ⭐
+• Серии побед: {sum(data['max_win_streak'] for data in user_data.values())}
+• Мега-выигрыши: {sum(data['mega_wins_count'] for data in user_data.values())}
 
 Для восстановления из резервной копии используйте команду /restore
     """
@@ -1587,12 +1738,25 @@ async def admin_settings_callback(update: Update, context: ContextTypes.DEFAULT_
     if not admin_mode.get(user_id, False):
         return
     
-    settings_text = """
-⚙️ НАСТРОЙКИ АДМИНИСТРАТОРА
+    settings_text = f"""
+⚙️ НАСТРОЙКИ СИСТЕМ БОНУСОВ
 
-Здесь можно настроить различные параметры бота.
+Текущие настройки:
 
-Функционал в разработке...
+🎰 СЕРИИ ПОБЕД:
+• 3 победы: x{WIN_STREAK_BONUSES[3]['multiplier']}
+• 5 побед: x{WIN_STREAK_BONUSES[5]['multiplier']}  
+• 10 побед: x{WIN_STREAK_BONUSES[10]['multiplier']}
+
+🎉 МЕГА-ВЫИГРЫШИ:
+• Шанс: {MEGA_WIN_CONFIG['chance']*100}%
+• Множитель: {MEGA_WIN_CONFIG['min_multiplier']}-{MEGA_WIN_CONFIG['max_multiplier']}x
+
+⚽ ФУТБОЛ (RTP ~70%):
+• Множители: 0.1x, 0.2x, 0.5x, 1.2x, 1.5x
+
+🏀 БАСКЕТБОЛ (RTP ~65%):
+• Множители: 0.1x, 0.15x, 0.2x, 1.4x, 1.4x
     """
     
     keyboard = [[InlineKeyboardButton("🔙 Назад в админку", callback_data="admin_back")]]
@@ -1797,9 +1961,98 @@ async def search_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 📈 Винрейт: {win_rate:.1f}%
 💳 Пополнено: {data['total_deposited']} ⭐
 💵 Потрачено реальных: {data['real_money_spent']} Stars
+
+🎰 Системы бонусов:
+🔥 Текущая серия: {data['win_streak']} побед
+🏆 Максимальная серия: {data['max_win_streak']} побед
+🎉 Мега-выигрышей: {data['mega_wins_count']}
+💫 Сумма мега-выигрышей: {data['total_mega_win_amount']} ⭐
     """
     
     await update.message.reply_text(user_info)
+
+# 🔍 НОВЫЕ КОМАНДЫ ПОИСКА
+async def search_streak_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        return
+    
+    if len(context.args) != 1:
+        await update.message.reply_text("""
+🔍 Поиск по сериям побед
+
+Использование: /searchstreak <минимальная_серия>
+
+Пример:
+/searchstreak 5 - найти пользователей с серией от 5 побед
+        """)
+        return
+    
+    try:
+        min_streak = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ Ошибка: серия должна быть числом")
+        return
+    
+    found_users = []
+    for uid, data in user_data.items():
+        if data['max_win_streak'] >= min_streak:
+            found_users.append((uid, data))
+    
+    if not found_users:
+        await update.message.reply_text(f"❌ Пользователи с серией от {min_streak} побед не найдены")
+        return
+    
+    result_text = f"👥 Пользователи с серией от {min_streak} побед:\n\n"
+    for i, (uid, data) in enumerate(found_users[:20], 1):  # Ограничиваем вывод
+        result_text += f"{i}. ID: {uid} | Серия: {data['max_win_streak']} | Баланс: {data['game_balance']} ⭐\n"
+    
+    if len(found_users) > 20:
+        result_text += f"\n... и еще {len(found_users) - 20} пользователей"
+    
+    await update.message.reply_text(result_text)
+
+async def search_mega_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        return
+    
+    if len(context.args) != 1:
+        await update.message.reply_text("""
+🔍 Поиск по мега-выигрышам
+
+Использование: /searchmega <минимальное_количество>
+
+Пример:
+/searchmega 3 - найти пользователей с 3+ мега-выигрышами
+        """)
+        return
+    
+    try:
+        min_mega = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ Ошибка: количество должно быть числом")
+        return
+    
+    found_users = []
+    for uid, data in user_data.items():
+        if data['mega_wins_count'] >= min_mega:
+            found_users.append((uid, data))
+    
+    if not found_users:
+        await update.message.reply_text(f"❌ Пользователи с {min_mega}+ мега-выигрышами не найдены")
+        return
+    
+    result_text = f"👥 Пользователи с {min_mega}+ мега-выигрышами:\n\n"
+    for i, (uid, data) in enumerate(found_users[:20], 1):
+        result_text += f"{i}. ID: {uid} | Мега-выигрыши: {data['mega_wins_count']} | Сумма: {data['total_mega_win_amount']} ⭐\n"
+    
+    if len(found_users) > 20:
+        result_text += f"\n... и еще {len(found_users) - 20} пользователей"
+    
+    await update.message.reply_text(result_text)
 
 async def reset_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -1843,7 +2096,11 @@ async def reset_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         'current_bet': 5,
         'registration_date': datetime.datetime.now().isoformat(),
         'last_activity': datetime.datetime.now().isoformat(),
-        'slots_mode': 'normal'
+        'slots_mode': 'normal',
+        'win_streak': 0,
+        'max_win_streak': 0,
+        'mega_wins_count': 0,
+        'total_mega_win_amount': 0
     }
     
     save_data()
@@ -1854,7 +2111,9 @@ async def reset_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"💰 Баланс: {old_data['game_balance']} ⭐\n"
         f"🎮 Игр: {old_data['total_games']}\n"
         f"🏆 Побед: {old_data['total_wins']}\n"
-        f"💳 Пополнено: {old_data['total_deposited']} ⭐"
+        f"💳 Пополнено: {old_data['total_deposited']} ⭐\n"
+        f"🔥 Макс. серия: {old_data['max_win_streak']}\n"
+        f"🎉 Мега-выигрышей: {old_data['mega_wins_count']}"
     )
 
 async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2016,6 +2275,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = """
 🎰 *NSource Casino - Помощь*
 
+*🎁 НОВЫЕ СИСТЕМЫ:*
+• *🔥 Серии побед* - получайте бонусы за несколько побед подряд
+• *🎉 Случайные мега-выигрыши* - шанс увеличить выигрыш в 2-10 раз!
+• *⚽ Обновленные игры* - футбол и баскетбол с 5 исходами
+
 *Основные команды:*
 /start - Начать работу с ботом
 /profile - Ваш профиль и статистика  
@@ -2037,8 +2301,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🎯 Дартс - Победа на 6 (3x ставки)
 🎲 Кубик - Победа на 6 (3x ставки)  
 🎳 Боулинг - Победа на 6 (3x ставки)
-⚽ Футбол - Победа на 5 (3x ставки)
-🏀 Баскетбол - Победа на 5 (3x ставки)
+⚽ Футбол - 5 исходов с разными множителями (RTP ~70%)
+🏀 Баскетбол - 5 исходов с разными множителями (RTP ~65%)
 
 *Вывод средств:*
 Минимальная сумма: 15 ⭐
@@ -2083,7 +2347,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "🎰 NSource Casino Bot - Полная игровая система с выводом средств!"
+    return "🎰 NSource Casino Bot - Полная игровая система с сериями побед и мега-выигрышами!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 5000))
@@ -2137,6 +2401,8 @@ def main():
     application.add_handler(CommandHandler("setbalance", set_balance_command))
     application.add_handler(CommandHandler("resetbalance", reset_balance_command))
     application.add_handler(CommandHandler("searchid", search_id_command))
+    application.add_handler(CommandHandler("searchstreak", search_streak_command))
+    application.add_handler(CommandHandler("searchmega", search_mega_command))
     application.add_handler(CommandHandler("resetuser", reset_user_command))
     application.add_handler(CommandHandler("ban", ban_command))
     application.add_handler(CommandHandler("withdrawals", withdrawals_command))
@@ -2164,6 +2430,9 @@ def main():
     print("💰 Система с изменяемой ставкой от 1 до 100000 ⭐!")
     print("💸 Полная система вывода средств!")
     print("🎰 Режимы слотов: обычные и 777 (только джекпот)!")
+    print("🔥 НОВАЯ СИСТЕМА: Серии побед с бонусами!")
+    print("🎉 НОВАЯ СИСТЕМА: Случайные мега-выигрыши x2-x10!")
+    print("⚽ ОБНОВЛЕНИЕ: Футбол и баскетбол с 5 исходами (RTP 65-75%)!")
     print("👑 Скрытая админ-панель (только по коду)!")
     print("⏱️ Оптимизированные задержки для каждой игры!")
     print("📝 Подсказки команд активированы (без админки)!")
