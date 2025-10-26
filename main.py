@@ -178,7 +178,7 @@ GAMES_CONFIG = {
             # БАСКЕТБОЛ - 5 значений, 1 выигрышное (5)
             1: {"win": False, "base_prize": 0, "message": "🏀 - проигрыш"},
             2: {"win": False, "base_prize": 0, "message": "🏀 - проигрыш"},
-            3: {"win": True, "base_prize": BASE_PRIZES["🏀"]["ПОПАДАНИЕ"], "message": "🏀 - ПОПАДАНИЕ! Выигрыш: {prize} ⭐"},
+            3: {"win": False, "base_prize": 0, "message": "🏀 - проигрыш"},
             4: {"win": True, "base_prize": BASE_PRIZES["🏀"]["ПОПАДАНИЕ"], "message": "🏀 - ПОПАДАНИЕ! Выигрыш: {prize} ⭐"}, 
             5: {"win": True, "base_prize": BASE_PRIZES["🏀"]["ПОПАДАНИЕ"], "message": "🏀 - ПОПАДАНИЕ! Выигрыш: {prize} ⭐"}
         }
