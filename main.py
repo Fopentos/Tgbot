@@ -267,7 +267,8 @@ user_data = defaultdict(lambda: {
     'real_money_spent': 0,
     'current_bet': 5,
     'registration_date': datetime.datetime.now().isoformat(),
-    'last_activity': datetime.datetime.now().isoformat()
+    'last_activity': datetime.datetime.now().isoformat(),
+    'slots_mode': 'normal'  # 'normal' или '777'
 })
 
 user_activity = defaultdict(lambda: {
@@ -388,12 +389,17 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     win_rate = (data['total_wins'] / data['total_games'] * 100) if data['total_games'] > 0 else 0
     
+    # Определяем текущий режим слотов
+    slots_mode = data.get('slots_mode', 'normal')
+    slots_mode_text = "🎰 Обычные" if slots_mode == 'normal' else "🎰 Слоты 777"
+    
     profile_text = f"""
 📊 Личный кабинет
 
 👤 Имя: {user.first_name}
 🆔 ID: {user_id}
 📅 Регистрация: {data['registration_date'][:10]}
+🎮 Режим слотов: {slots_mode_text}
 
 💎 Статистика:
 💰 Баланс: {data['game_balance']} ⭐
@@ -779,12 +785,17 @@ async def play_games_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = query.from_user.id
     balance = user_data[user_id]['game_balance']
     current_bet = user_data[user_id]['current_bet']
+    slots_mode = user_data[user_id].get('slots_mode', 'normal')
+    
+    # Определяем текущий режим слотов
+    slots_mode_text = "Обычные" if slots_mode == 'normal' else "777"
     
     games_text = f"""
 🎮 Выбор игры
 
 💎 Баланс: {balance} ⭐
 🎯 Текущая ставка: {current_bet} ⭐
+🎰 Режим слотов: {slots_mode_text}
 📊 Диапазон ставки: {MIN_BET}-{MAX_BET} ⭐
 
 Выберите игру или просто отправь любой dice эмодзи в чат!
@@ -813,6 +824,16 @@ async def handle_game_selection(update: Update, context: ContextTypes.DEFAULT_TY
     user_id = query.from_user.id
     game_type = query.data.replace("play_", "")
     current_bet = user_data[user_id]['current_bet']
+    
+    # Устанавливаем режим слотов
+    if game_type == 'slots777':
+        user_data[user_id]['slots_mode'] = '777'
+        await query.edit_message_text("✅ Режим изменен на Слоты 777! Теперь все ваши игры в слоты будут в режиме 777 (только джекпот 777).")
+        return
+    elif game_type == 'slots':
+        user_data[user_id]['slots_mode'] = 'normal'
+        await query.edit_message_text("✅ Режим изменен на обычные Слоты! Теперь все ваши игры в слоты будут в обычном режиме.")
+        return
     
     # ПРОВЕРКА БАЛАНСА
     if user_data[user_id]['game_balance'] < current_bet and not admin_mode.get(user_id, False):
@@ -865,7 +886,7 @@ async def handle_game_selection(update: Update, context: ContextTypes.DEFAULT_TY
     await asyncio.sleep(delay)
     
     # Обрабатываем результат после задержки
-    await process_dice_result(user_id, emoji, dice_message.dice.value, current_bet if not admin_mode.get(user_id, False) else 0, dice_message, context, game_type)
+    await process_dice_result(user_id, emoji, dice_message.dice.value, current_bet if not admin_mode.get(user_id, False) else 0, dice_message, context)
     
     save_data()
 
@@ -922,14 +943,17 @@ async def handle_user_dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await asyncio.sleep(delay)
     
     # Обрабатываем результат после задержки
-    await process_dice_result(user_id, emoji, value, cost, message, context, 'slots')
+    await process_dice_result(user_id, emoji, value, cost, message, context)
     
     save_data()
 
 # 🎯 ОБРАБОТКА РЕЗУЛЬТАТА DICE С ПРОПОРЦИОНАЛЬНЫМИ ВЫИГРЫШАМИ
-async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, message, context: ContextTypes.DEFAULT_TYPE, game_type='slots'):
-    # Выбираем правильную конфигурацию в зависимости от типа игры
-    if game_type == 'slots777':
+async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, message, context: ContextTypes.DEFAULT_TYPE):
+    # Определяем режим слотов пользователя
+    slots_mode = user_data[user_id].get('slots_mode', 'normal')
+    
+    # Выбираем правильную конфигурацию в зависимости от режима слотов
+    if emoji == "🎰" and slots_mode == '777':
         game_config = SLOTS_777_CONFIG.get(emoji)
     else:
         game_config = GAMES_CONFIG.get(emoji)
@@ -1500,7 +1524,7 @@ async def admin_withdrawals_callback(update: Update, context: ContextTypes.DEFAU
             withdrawals_text += f"📊 Статус: {req['status']}\n"
             withdrawals_text += "─" * 30 + "\n"
     
-    withdrawals_text += f"\n💰 Всего выведо: {total_withdrawals} ⭐"
+    withdrawals_text += f"\n💰 Всего выведено: {total_withdrawals} ⭐"
     
     keyboard = [[InlineKeyboardButton("🔙 Назад в админку", callback_data="admin_back")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1818,7 +1842,8 @@ async def reset_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         'real_money_spent': 0,
         'current_bet': 5,
         'registration_date': datetime.datetime.now().isoformat(),
-        'last_activity': datetime.datetime.now().isoformat()
+        'last_activity': datetime.datetime.now().isoformat(),
+        'slots_mode': 'normal'
     }
     
     save_data()
@@ -2138,6 +2163,7 @@ def main():
     print("🎮 Доступные игры: 🎰 🎯 🎲 🎳 ⚽ 🏀")
     print("💰 Система с изменяемой ставкой от 1 до 100000 ⭐!")
     print("💸 Полная система вывода средств!")
+    print("🎰 Режимы слотов: обычные и 777 (только джекпот)!")
     print("👑 Скрытая админ-панель (только по коду)!")
     print("⏱️ Оптимизированные задержки для каждой игры!")
     print("📝 Подсказки команд активированы (без админки)!")
