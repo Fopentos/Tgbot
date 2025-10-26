@@ -21,7 +21,6 @@ MAX_BET = 100000
 # ⏱️ ВРЕМЯ АНИМАЦИИ ДЛЯ КАЖДОЙ ИГРЫ (в секундах)
 DICE_DELAYS = {
     "🎰": 2.2,  # Слоты - самая долгая анимация
-    "🎪": 2.2,  # Слоты 777
     "🎯": 2.6,  # Дартс
     "🎲": 2.8,  # Кубик
     "🎳": 3.0,  # Боулинг
@@ -53,9 +52,6 @@ BASE_PRIZES = {
         "ТРИ ЛИМОНА": 15,
         "ДЖЕКПОТ 777": 20
     },
-    "🎪": {
-        "ДЖЕКПОТ 777": 50  # Новый режим слотов - только 777
-    },
     "🎯": {"ПОПАДАНИЕ В ЦЕЛЬ": 3},
     "🎲": {"ВЫПАЛО 6": 3},
     "🎳": {"СТРАЙК": 3},
@@ -67,7 +63,7 @@ BASE_PRIZES = {
 GAMES_CONFIG = {
     "🎰": {
         "values": {
-            # СЛОТЫ - 64 значения, 4 выигрышных с ОБНОВЛЕННЫМИ ПРИЗАМИ
+            # ОБЫЧНЫЕ СЛОТЫ - 64 значения, 4 выигрышных с ОБНОВЛЕННЫМИ ПРИЗАМИ
             1: {"win": True, "base_prize": BASE_PRIZES["🎰"]["ТРИ БАРА"], "message": "🎰 ТРИ БАРА! Выигрыш: {prize} ⭐"},
             2: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #2 - проигрыш"},
             3: {"win": False, "base_prize": 0, "message": "🎰 Комбинация #3 - проигрыш"},
@@ -134,75 +130,6 @@ GAMES_CONFIG = {
             64: {"win": True, "base_prize": BASE_PRIZES["🎰"]["ДЖЕКПОТ 777"], "message": "🎰 ДЖЕКПОТ 777! Выигрыш: {prize} ⭐"}
         }
     },
-    "🎪": {
-        "values": {
-            # НОВЫЕ СЛОТЫ 777 - 64 значения, ТОЛЬКО 1 выигрышное (64) с увеличенным призом
-            1: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            2: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            3: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            4: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            5: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            6: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            7: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            8: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            9: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            10: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            11: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            12: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            13: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            14: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            15: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            16: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            17: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            18: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            19: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            20: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            21: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            22: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            23: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            24: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            25: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            26: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            27: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            28: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            29: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            30: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            31: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            32: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            33: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            34: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            35: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            36: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            37: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            38: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            39: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            40: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            41: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            42: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            43: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            44: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            45: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            46: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            47: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            48: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            49: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            50: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            51: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            52: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            53: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            54: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            55: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            56: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            57: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            58: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            59: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            60: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            61: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            62: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            63: {"win": False, "base_prize": 0, "message": "🎪 - проигрыш"},
-            64: {"win": True, "base_prize": BASE_PRIZES["🎪"]["ДЖЕКПОТ 777"], "message": "🎪 ДЖЕКПОТ 777! МЕГА ВЫИГРЫШ: {prize} ⭐"}
-        }
-    },
     "🎯": {
         "values": {
             # ДАРТС - 6 значений, 1 выигрышное (6)
@@ -254,6 +181,79 @@ GAMES_CONFIG = {
             3: {"win": False, "base_prize": 0, "message": "🏀 - проигрыш"},
             4: {"win": False, "base_prize": 0, "message": "🏀 - проигрыш"},
             5: {"win": True, "base_prize": BASE_PRIZES["🏀"]["ПОПАДАНИЕ"], "message": "🏀 - ПОПАДАНИЕ! Выигрыш: {prize} ⭐"}
+        }
+    }
+}
+
+# 🎮 КОНФИГУРАЦИЯ ДЛЯ СЛОТОВ 777 (ТОЛЬКО ДЖЕКПОТ)
+SLOTS_777_CONFIG = {
+    "🎰": {
+        "values": {
+            # СЛОТЫ 777 - 64 значения, ТОЛЬКО 1 выигрышное (64) с увеличенным призом
+            1: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            2: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            3: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            4: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            5: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            6: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            7: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            8: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            9: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            10: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            11: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            12: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            13: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            14: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            15: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            16: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            17: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            18: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            19: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            20: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            21: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            22: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            23: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            24: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            25: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            26: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            27: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            28: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            29: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            30: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            31: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            32: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            33: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            34: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            35: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            36: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            37: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            38: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            39: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            40: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            41: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            42: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            43: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            44: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            45: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            46: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            47: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            48: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            49: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            50: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            51: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            52: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            53: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            54: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            55: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            56: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            57: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            58: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            59: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            60: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            61: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            62: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            63: {"win": False, "base_prize": 0, "message": "🎰 - проигрыш"},
+            64: {"win": True, "base_prize": 50, "message": "🎰 ДЖЕКПОТ 777! МЕГА ВЫИГРЫШ: {prize} ⭐"}  # 50x ставки
         }
     }
 }
@@ -355,7 +355,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Доступные игры (ставка от 1 до 100000 ⭐):
 🎰 Слоты - 64 комбинации, 4 выигрышных (5-20x ставки)
-🎪 Слоты 777 - только джекпот 777 (50x ставки)
+🎰 Слоты 777 - только джекпот 777 (50x ставки)
 🎯 Дартс - победа на 6 (3x ставки)
 🎲 Кубик - победа на 6 (3x ставки)
 🎳 Боулинг - победа на 6 (3x ставки)
@@ -792,7 +792,7 @@ async def play_games_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     keyboard = [
         [InlineKeyboardButton("🎰 Слоты (4 выигрыша)", callback_data="play_slots")],
-        [InlineKeyboardButton("🎪 Слоты 777 (только джекпот)", callback_data="play_slots777")],
+        [InlineKeyboardButton("🎰 Слоты 777 (только джекпот)", callback_data="play_slots777")],
         [InlineKeyboardButton("🎯 Дартс", callback_data="play_dart")],
         [InlineKeyboardButton("🎲 Кубик", callback_data="play_dice")],
         [InlineKeyboardButton("🎳 Боулинг", callback_data="play_bowling")],
@@ -838,7 +838,7 @@ async def handle_game_selection(update: Update, context: ContextTypes.DEFAULT_TY
     
     game_emojis = {
         'slots': '🎰', 
-        'slots777': '🎪',  # Новые слоты 777
+        'slots777': '🎰',  # Тот же эмодзи слотов
         'dart': '🎯', 
         'dice': '🎲',
         'bowling': '🎳', 
@@ -865,7 +865,7 @@ async def handle_game_selection(update: Update, context: ContextTypes.DEFAULT_TY
     await asyncio.sleep(delay)
     
     # Обрабатываем результат после задержки
-    await process_dice_result(user_id, emoji, dice_message.dice.value, current_bet if not admin_mode.get(user_id, False) else 0, dice_message, context)
+    await process_dice_result(user_id, emoji, dice_message.dice.value, current_bet if not admin_mode.get(user_id, False) else 0, dice_message, context, game_type)
     
     save_data()
 
@@ -910,7 +910,7 @@ async def handle_user_dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Сохраняем информацию о текущей игре
     user_sessions[user_id] = {
-        'game_type': emoji,
+        'game_type': 'slots',  # По умолчанию обычные слоты
         'emoji': emoji,
         'bet': cost,
         'message_id': message.message_id,
@@ -922,13 +922,18 @@ async def handle_user_dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await asyncio.sleep(delay)
     
     # Обрабатываем результат после задержки
-    await process_dice_result(user_id, emoji, value, cost, message, context)
+    await process_dice_result(user_id, emoji, value, cost, message, context, 'slots')
     
     save_data()
 
 # 🎯 ОБРАБОТКА РЕЗУЛЬТАТА DICE С ПРОПОРЦИОНАЛЬНЫМИ ВЫИГРЫШАМИ
-async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, message, context: ContextTypes.DEFAULT_TYPE):
-    game_config = GAMES_CONFIG.get(emoji)
+async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, message, context: ContextTypes.DEFAULT_TYPE, game_type='slots'):
+    # Выбираем правильную конфигурацию в зависимости от типа игры
+    if game_type == 'slots777':
+        game_config = SLOTS_777_CONFIG.get(emoji)
+    else:
+        game_config = GAMES_CONFIG.get(emoji)
+        
     if not game_config:
         return
     
@@ -1012,61 +1017,12 @@ async def back_to_profile_callback(update: Update, context: ContextTypes.DEFAULT
     await query.answer()
     await profile(update, context)
 
-# 👑 РАСШИРЕННАЯ АДМИН СИСТЕМА
+# 👑 АДМИН СИСТЕМА - СКРЫТАЯ
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if len(context.args) == 0:
-        await update.message.reply_text("""
-👑 Админ система NSource Casino
-
-Использование: /admin <код>
-
-Доступные команды:
-
-📊 Статистика:
-/stats - Полная статистика бота
-/users - Список всех пользователей  
-/top - Топ игроков по балансу и активности
-
-💰 Управление балансами:
-/addbalance <user_id> <amount> - Пополнить баланс пользователя
-/setbalance <user_id> <amount> - Установить баланс пользователя
-/resetbalance <user_id> - Сбросить баланс пользователя
-
-👥 Управление пользователями:
-/searchid <user_id> - Найти пользователя по ID
-/searchname <имя> - Найти пользователя по имени
-/searchbalance <min> <max> - Найти пользователей по диапазону баланса
-/resetuser <user_id> - Полный сброс пользователя
-
-📢 Рассылка:
-/broadcast - Сделать рассылку всем пользователям
-
-🎁 Промокоды:
-/promo create <код> <сумма> <использований> - Создать промокод
-/promo delete <код> - Удалить промокод
-/promo list - Список всех промокодов
-/promo stats <код> - Статистика промокода
-
-🚫 Бан-система:
-/ban <user_id> <причина> - Забанить пользователя
-/unban <user_id> - Разбанить пользователя
-/banlist - Список забаненных
-/mute <user_id> <время> - Заглушить пользователя
-/unmute <user_id> - Снять заглушку
-
-💾 Система:
-/backup - Создать резервную копию данных
-/system - Системная информация
-/withdrawals - Список заявок на вывод
-
-Примеры использования:
-/addbalance 123456789 1000
-/setbalance 123456789 5000
-/ban 123456789 Нарушение правил
-/promo create SUMMER2024 100 50
-        """)
+        # Не показываем никакой информации если код не указан
         return
     
     code = context.args[0]
@@ -1075,11 +1031,11 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "👑 РЕЖИМ АДМИНИСТРАТОРА АКТИВИРОВАН!\n\n"
             "✨ Теперь вам доступны все админ-команды.\n"
-            "📝 Используйте /admin чтобы посмотреть список команд.\n"
             "🎮 Используйте кнопки в профиле для быстрого доступа к админ-панели!"
         )
     else:
-        await update.message.reply_text("❌ Неверный код админа")
+        # Не показываем сообщение о неверном коде
+        return
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1544,7 +1500,7 @@ async def admin_withdrawals_callback(update: Update, context: ContextTypes.DEFAU
             withdrawals_text += f"📊 Статус: {req['status']}\n"
             withdrawals_text += "─" * 30 + "\n"
     
-    withdrawals_text += f"\n💰 Всего выведено: {total_withdrawals} ⭐"
+    withdrawals_text += f"\n💰 Всего выведо: {total_withdrawals} ⭐"
     
     keyboard = [[InlineKeyboardButton("🔙 Назад в админку", callback_data="admin_back")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1586,7 +1542,7 @@ async def admin_play_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     keyboard = [
         [InlineKeyboardButton("🎰 Слоты (БЕСПЛАТНО)", callback_data="admin_play_slots")],
-        [InlineKeyboardButton("🎪 Слоты 777 (БЕСПЛАТНО)", callback_data="admin_play_slots777")],
+        [InlineKeyboardButton("🎰 Слоты 777 (БЕСПЛАТНО)", callback_data="admin_play_slots777")],
         [InlineKeyboardButton("🎯 Дартс (БЕСПЛАТНО)", callback_data="admin_play_dart")],
         [InlineKeyboardButton("🎲 Кубик (БЕСПЛАТНО)", callback_data="admin_play_dice")],
         [InlineKeyboardButton("🎳 Боулинг (БЕСПЛАТНО)", callback_data="admin_play_bowling")],
@@ -1634,7 +1590,6 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /stats для быстрой статистики"""
     user_id = update.effective_user.id
     if not admin_mode.get(user_id, False):
-        await update.message.reply_text("❌ Эта команда только для админов")
         return
     
     await admin_stats_callback(update, context)
@@ -1643,7 +1598,6 @@ async def users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /users для списка пользователей"""
     user_id = update.effective_user.id
     if not admin_mode.get(user_id, False):
-        await update.message.reply_text("❌ Эта команда только для админов")
         return
     
     await admin_users_callback(update, context)
@@ -1652,7 +1606,6 @@ async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /top для топа игроков"""
     user_id = update.effective_user.id
     if not admin_mode.get(user_id, False):
-        await update.message.reply_text("❌ Эта команда только для админов")
         return
     
     await admin_top_callback(update, context)
@@ -1662,7 +1615,6 @@ async def add_balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = update.effective_user.id
     
     if not admin_mode.get(user_id, False):
-        await update.message.reply_text("❌ Эта команда только для админов")
         return
     
     if len(context.args) != 2:
@@ -1702,7 +1654,6 @@ async def set_balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = update.effective_user.id
     
     if not admin_mode.get(user_id, False):
-        await update.message.reply_text("❌ Эта команда только для админов")
         return
     
     if len(context.args) != 2:
@@ -1743,7 +1694,6 @@ async def reset_balance_command(update: Update, context: ContextTypes.DEFAULT_TY
     user_id = update.effective_user.id
     
     if not admin_mode.get(user_id, False):
-        await update.message.reply_text("❌ Эта команда только для админов")
         return
     
     if len(context.args) != 1:
@@ -1782,7 +1732,6 @@ async def search_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if not admin_mode.get(user_id, False):
-        await update.message.reply_text("❌ Эта команда только для админов")
         return
     
     if len(context.args) != 1:
@@ -1832,7 +1781,6 @@ async def reset_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_id = update.effective_user.id
     
     if not admin_mode.get(user_id, False):
-        await update.message.reply_text("❌ Эта команда только для админов")
         return
     
     if len(context.args) != 1:
@@ -1888,7 +1836,6 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if not admin_mode.get(user_id, False):
-        await update.message.reply_text("❌ Эта команда только для админов")
         return
     
     if len(context.args) < 2:
@@ -1929,7 +1876,6 @@ async def withdrawals_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = update.effective_user.id
     
     if not admin_mode.get(user_id, False):
-        await update.message.reply_text("❌ Эта команда только для админов")
         return
     
     if not withdrawal_requests:
@@ -2062,7 +2008,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 *Доступные игры:*
 🎰 Слоты - 64 комбинации, 4 выигрышных (5-20x ставки)
-🎪 Слоты 777 - только джекпот 777 (50x ставки)
+🎰 Слоты 777 - только джекпот 777 (50x ставки)
 🎯 Дартс - Победа на 6 (3x ставки)
 🎲 Кубик - Победа на 6 (3x ставки)  
 🎳 Боулинг - Победа на 6 (3x ставки)
@@ -2118,7 +2064,7 @@ def run_flask():
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
 
-# 📝 УСТАНОВКА ПОДСКАЗОК КОМАНД
+# 📝 УСТАНОВКА ПОДСКАЗОК КОМАНД (БЕЗ АДМИНКИ)
 async def set_bot_commands(application):
     """Установка подсказок команд для бота"""
     commands = [
@@ -2128,8 +2074,8 @@ async def set_bot_commands(application):
         ("withdraw", "💸 Вывести средства"),
         ("activity", "📈 Моя активность"),
         ("bet", "🎯 Изменить ставку"),
-        ("help", "🆘 Помощь по командам"),
-        ("admin", "👑 Админ панель")
+        ("help", "🆘 Помощь по командам")
+        # Убрали админку из списка команд
     ]
     
     from telegram import BotCommand
@@ -2155,12 +2101,12 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("profile", profile))
     application.add_handler(CommandHandler("deposit", deposit_command))
-    application.add_handler(CommandHandler("withdraw", withdraw_command))  # ДОБАВЛЕНО
+    application.add_handler(CommandHandler("withdraw", withdraw_command))
     application.add_handler(CommandHandler("activity", activity_command))
     application.add_handler(CommandHandler("bet", bet_command))
-    application.add_handler(CommandHandler("help", help_command))  # ДОБАВЛЕНО
+    application.add_handler(CommandHandler("help", help_command))
     
-    # АДМИН КОМАНДЫ
+    # АДМИН КОМАНДЫ (скрытые)
     application.add_handler(CommandHandler("admin", admin_command))
     application.add_handler(CommandHandler("addbalance", add_balance_command))
     application.add_handler(CommandHandler("setbalance", set_balance_command))
@@ -2189,12 +2135,12 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_broadcast_message))
     
     print("🎰 NSource Casino Bot запущен!")
-    print("🎮 Доступные игры: 🎰 🎪 🎯 🎲 🎳 ⚽ 🏀")
+    print("🎮 Доступные игры: 🎰 🎯 🎲 🎳 ⚽ 🏀")
     print("💰 Система с изменяемой ставкой от 1 до 100000 ⭐!")
     print("💸 Полная система вывода средств!")
-    print("👑 Расширенная админ-панель с подробными командами!")
+    print("👑 Скрытая админ-панель (только по коду)!")
     print("⏱️ Оптимизированные задержки для каждой игры!")
-    print("📝 Подсказки команд активированы!")
+    print("📝 Подсказки команд активированы (без админки)!")
     application.run_polling()
 
 if __name__ == '__main__':
