@@ -574,7 +574,7 @@ async def handle_game_selection(update: Update, context: ContextTypes.DEFAULT_TY
     dice_message = await context.bot.send_dice(chat_id=query.message.chat_id, emoji=emoji)
     
     # Ждем 4 секунды перед показом результата
-    await asyncio.sleep(4)
+    await asyncio.sleep(3)
     
     # Обрабатываем результат после задержки
     await process_dice_result(user_id, emoji, dice_message.dice.value, current_bet if not admin_mode.get(user_id, False) else 0, dice_message, context)
@@ -630,7 +630,7 @@ async def handle_user_dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     
     # Ждем 4 секунды перед показом результата
-    await asyncio.sleep(4)
+    await asyncio.sleep(3)
     
     # Обрабатываем результат после задержки
     await process_dice_result(user_id, emoji, value, cost, message, context)
