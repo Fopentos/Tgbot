@@ -261,7 +261,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /deposit - Пополнить баланс  
 /activity - Моя активность
 
-Просто отправь эмодзи игры чтобы начать играть!
+Просто отправь любой dice эмодзи игры чтобы начать играть!
     """
     
     keyboard = [
@@ -440,7 +440,7 @@ async def successful_payment_handler(update: Update, context: ContextTypes.DEFAU
         f"🎮 Приятной игры!"
     )
 
-# 🎮 СИСТЕМА ИГР - ПЕРЕРАБОТАННАЯ
+# 🎮 СИСТЕМА ИГР - УПРОЩЕННАЯ
 async def play_games_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -454,7 +454,7 @@ async def play_games_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 💎 Баланс: {balance} звезд
 🎯 Стоимость игры: 5 звезд
 
-Выберите игру или просто отправь эмодзи игры в чат!
+Выберите игру или просто отправь любой dice эмодзи в чат!
     """
     
     keyboard = [
@@ -506,109 +506,57 @@ async def handle_game_selection(update: Update, context: ContextTypes.DEFAULT_TY
     
     emoji = game_emojis.get(game_type, '🎰')
     
-    # Сохраняем информацию об игре для обработки результата
-    context.user_data['expecting_dice'] = True
-    context.user_data['last_game_type'] = game_type
-    context.user_data['last_game_user_id'] = user_id
-    context.user_data['last_game_emoji'] = emoji
-    context.user_data['last_game_cost'] = GAME_COST if not admin_mode.get(user_id, False) else 0
-    
+    # Отправляем dice от имени бота
     dice_message = await context.bot.send_dice(chat_id=query.message.chat_id, emoji=emoji)
-    context.user_data['last_dice_message_id'] = dice_message.message_id
     
-    message_text = f"🎮 Игра запущена! {emoji}\n"
-    if admin_mode.get(user_id, False):
-        message_text += "👑 Режим админа: бесплатно\n"
-    else:
-        message_text += f"💸 Списано: {GAME_COST} звезд\n"
-    message_text += f"💰 Остаток: {user_data[user_id]['game_balance']} звезд"
+    # Обрабатываем результат сразу
+    await process_dice_result(user_id, emoji, dice_message.dice.value, GAME_COST if not admin_mode.get(user_id, False) else 0, dice_message, context)
     
-    await query.edit_message_text(message_text)
     save_data()
 
-# 🎰 ОБРАБОТКА DICE - УЛУЧШЕННАЯ СИСТЕМА
-async def handle_dice_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# 🎰 ОБРАБОТКА DICE ОТ ПОЛЬЗОВАТЕЛЯ - ГЛАВНЫЙ ОБРАБОТЧИК
+async def handle_user_dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
+    user_id = update.effective_user.id
     
     if not message.dice:
         return
     
-    # Для игр через кнопки - используем context.user_data
-    if context.user_data.get('expecting_dice', False):
-        user_id = context.user_data.get('last_game_user_id')
-        if not user_id:
-            return
-        
-        emoji = message.dice.emoji
-        value = message.dice.value
-        
-        # Проверяем, что это тот же эмодзи, который мы ожидаем
-        expected_emoji = context.user_data.get('last_game_emoji')
-        if emoji != expected_emoji:
-            return
-        
-        await process_game_result(user_id, emoji, value, context.user_data.get('last_game_cost', 0), message, context)
-        
-        # Очищаем данные игры
-        context.user_data.pop('expecting_dice', None)
-        context.user_data.pop('last_game_type', None)
-        context.user_data.pop('last_dice_message_id', None)
-        context.user_data.pop('last_game_user_id', None)
-        context.user_data.pop('last_game_cost', None)
-        context.user_data.pop('last_game_emoji', None)
-
-# 🎮 ОБРАБОТКА ИГР ЧЕРЕЗ ЭМОДЗИ - ПОСТОЯННАЯ РАБОТА
-async def handle_game_emoji(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    emoji = update.message.text
+    emoji = message.dice.emoji
+    value = message.dice.value
     
+    # Проверяем, что это поддерживаемая игра
     if emoji not in GAMES_CONFIG:
         return
     
-    game_config = GAMES_CONFIG[emoji]
-    
     # ПРОВЕРКА БАЛАНСА
-    if user_data[user_id]['game_balance'] < game_config["cost"] and not admin_mode.get(user_id, False):
-        await update.message.reply_text(
+    if user_data[user_id]['game_balance'] < GAME_COST and not admin_mode.get(user_id, False):
+        await message.reply_text(
             f"❌ Недостаточно средств!\n\n"
             f"💰 Ваш баланс: {user_data[user_id]['game_balance']} звезд\n"
-            f"🎯 Требуется: {game_config['cost']} звезд\n\n"
+            f"🎯 Требуется: {GAME_COST} звезд\n\n"
             "💳 Пополните баланс чтобы играть!",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("💰 Пополнить", callback_data="deposit")]
+                [InlineKeyboardButton("💰 Пополнить баланс", callback_data="deposit")]
             ])
         )
         return
     
     # СПИСАНИЕ СРЕДСТВ
-    cost = game_config["cost"]
+    cost = GAME_COST if not admin_mode.get(user_id, False) else 0
     if not admin_mode.get(user_id, False):
         user_data[user_id]['game_balance'] -= cost
     
     user_data[user_id]['total_games'] += 1
     user_data[user_id]['last_activity'] = datetime.datetime.now().isoformat()
     
-    # Сохраняем информацию об игре
-    context.user_data['expecting_dice'] = True
-    context.user_data['last_game_user_id'] = user_id
-    context.user_data['last_game_emoji'] = emoji
-    context.user_data['last_game_cost'] = cost if not admin_mode.get(user_id, False) else 0
+    # Обрабатываем результат
+    await process_dice_result(user_id, emoji, value, cost, message, context)
     
-    dice_message = await context.bot.send_dice(chat_id=update.message.chat_id, emoji=emoji)
-    context.user_data['last_dice_message_id'] = dice_message.message_id
-    
-    message_text = f"🎮 Игра запущена! {emoji}\n"
-    if admin_mode.get(user_id, False):
-        message_text += "👑 Режим админа: бесплатно\n"
-    else:
-        message_text += f"💸 Списано: {cost} звезд\n"
-    message_text += f"💰 Остаток: {user_data[user_id]['game_balance']} звезд"
-    
-    await update.message.reply_text(message_text)
     save_data()
 
-# 🎯 ОБРАБОТКА РЕЗУЛЬТАТА ИГРЫ
-async def process_game_result(user_id: int, emoji: str, value: int, cost: int, message, context: ContextTypes.DEFAULT_TYPE):
+# 🎯 ОБРАБОТКА РЕЗУЛЬТАТА DICE
+async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, message, context: ContextTypes.DEFAULT_TYPE):
     game_config = GAMES_CONFIG.get(emoji)
     if not game_config:
         return
@@ -651,10 +599,8 @@ async def process_game_result(user_id: int, emoji: str, value: int, cost: int, m
             f"💰 Награда: {weekly_reward} звезд\n"
             f"💎 Баланс: {user_data[user_id]['game_balance']} звезд"
         )
-    
-    save_data()
 
-# 👑 УЛУЧШЕННАЯ АДМИН СИСТЕМА
+# 👑 АДМИН СИСТЕМА
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -890,21 +836,11 @@ async def admin_handle_game_selection(update: Update, context: ContextTypes.DEFA
     
     emoji = game_emojis.get(game_type, '🎰')
     
-    # Сохраняем информацию об игре
-    context.user_data['expecting_dice'] = True
-    context.user_data['last_game_type'] = game_type
-    context.user_data['last_game_user_id'] = user_id
-    context.user_data['last_game_emoji'] = emoji
-    context.user_data['last_game_cost'] = 0  # Бесплатно для админа
-    
+    # Отправляем dice от имени бота
     dice_message = await context.bot.send_dice(chat_id=query.message.chat_id, emoji=emoji)
-    context.user_data['last_dice_message_id'] = dice_message.message_id
     
-    await query.edit_message_text(
-        f"👑 Админ режим - игра запущена! {emoji}\n"
-        f"💸 Списано: 0 звезд (бесплатно)\n"
-        f"💰 Баланс: {user_data[user_id]['game_balance']} звезд"
-    )
+    # Обрабатываем результат
+    await process_dice_result(user_id, emoji, dice_message.dice.value, 0, dice_message, context)
 
 # 🔧 АДМИН КОМАНДЫ
 async def add_balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1025,13 +961,12 @@ def main():
     application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
     
-    # СООБЩЕНИЯ - ВОССТАНАВЛИВАЕМ обработку эмодзи для постоянной работы
-    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("^(🎰|🎯|🎲|🎳|⚽|🏀)$"), handle_game_emoji))
-    application.add_handler(MessageHandler(filters.Dice.ALL, handle_dice_result))
+    # СООБЩЕНИЯ - ГЛАВНЫЙ ОБРАБОТЧИК DICE ОТ ПОЛЬЗОВАТЕЛЯ
+    application.add_handler(MessageHandler(filters.Dice.ALL, handle_user_dice))
     
     print("🎰 NSource Casino Bot запущен!")
     print("🎮 Доступные игры: 🎰 🎯 🎲 🎳 ⚽ 🏀")
-    print("💰 Система работает постоянно через отправку эмодзи!")
+    print("💰 Каждое сообщение с dice обрабатывается и списывает 5 звезд!")
     application.run_polling()
 
 if __name__ == '__main__':
