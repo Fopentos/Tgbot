@@ -71,11 +71,11 @@ BASE_PRIZES = {
     }
 }
 
-# 🎰 СИСТЕМА СЕРИЙ ПОБЕД
+# 🎰 СИСТЕМА СЕРИЙ ПОБЕД (ТОЛЬКО ДЛЯ 🎰🎯🎲🎳)
 WIN_STREAK_BONUSES = {
-    3: {"multiplier": 1.2, "message": "🔥 Серия из 3 побед! Бонус +20% к выигрышу!"},
-    5: {"multiplier": 1.5, "message": "🔥🔥 Серия из 5 побед! Бонус +50% к выигрышу!"},
-    10: {"multiplier": 2.0, "message": "🔥🔥🔥 СЕРИЯ ИЗ 10 ПОБЕД! МЕГА БОНУС +100% к выигрышу!"}
+    2: {"multiplier": 1.25, "message": "🔥 Серия из 2 побед! Бонус +25% к выигрышу!"},
+    3: {"multiplier": 1.5, "message": "🔥🔥 Серия из 3 побед! Бонус +50% к выигрышу!"},
+    5: {"multiplier": 2.0, "message": "🔥🔥🔥 СЕРИЯ ИЗ 5 ПОБЕД! МЕГА БОНУС +100% к выигрышу!"}
 }
 
 # 🎁 СИСТЕМА СЛУЧАЙНЫХ МЕГА-ВЫИГРЫШЕЙ
@@ -378,41 +378,49 @@ def update_daily_activity(user_id: int):
     return None
 
 # 🎰 СИСТЕМА СЕРИЙ ПОБЕД И МЕГА-ВЫИГРЫШЕЙ
-def calculate_win_bonuses(user_id: int, base_prize: float, bet: int) -> tuple:
+def calculate_win_bonuses(user_id: int, base_prize: float, bet: int, emoji: str) -> tuple:
     """
     Рассчитывает бонусы за серии побед и случайные мега-выигрыши
     Возвращает: (финальный_приз, сообщения_о_бонусах)
     """
     user = user_data[user_id]
     bonus_messages = []
-    final_prize = base_prize * bet
     
-    # 🔥 СИСТЕМА СЕРИЙ ПОБЕД
-    if base_prize > 0:  # Если это выигрыш
-        user['win_streak'] += 1
-        user['max_win_streak'] = max(user['max_win_streak'], user['win_streak'])
-        
-        # Проверяем бонусы за серии
-        for streak, bonus in WIN_STREAK_BONUSES.items():
-            if user['win_streak'] == streak:
-                streak_multiplier = bonus["multiplier"]
-                final_prize *= streak_multiplier
-                bonus_messages.append(bonus["message"])
-                break
-    else:
-        # Сбрасываем серию при проигрыше
-        if user['win_streak'] > 0:
-            bonus_messages.append(f"💔 Серия побед прервана на {user['win_streak']}!")
-        user['win_streak'] = 0
+    # Базовый выигрыш
+    base_win_amount = base_prize * bet
     
-    # 🎰 СИСТЕМА СЛУЧАЙНЫХ МЕГА-ВЫИГРЫШЕЙ
+    # 🔥 СИСТЕМА СЕРИЙ ПОБЕД (ТОЛЬКО ДЛЯ 🎰🎯🎲🎳)
+    streak_applicable = emoji in ["🎰", "🎯", "🎲", "🎳"]
+    
+    if streak_applicable:
+        if base_prize > 0:  # Если это выигрыш
+            user['win_streak'] += 1
+            user['max_win_streak'] = max(user['max_win_streak'], user['win_streak'])
+            
+            # Применяем бонусы за серии
+            for streak, bonus in WIN_STREAK_BONUSES.items():
+                if user['win_streak'] == streak:
+                    streak_multiplier = bonus["multiplier"]
+                    base_win_amount *= streak_multiplier
+                    bonus_messages.append(bonus["message"])
+                    break
+        else:
+            # Сбрасываем серию при проигрыше
+            if user['win_streak'] > 0:
+                bonus_messages.append(f"💔 Серия побед прервана на {user['win_streak']}!")
+            user['win_streak'] = 0
+    
+    # 🎉 СИСТЕМА СЛУЧАЙНЫХ МЕГА-ВЫИГРЫШЕЙ
     if base_prize > 0 and random.random() < MEGA_WIN_CONFIG["chance"]:
         mega_multiplier = random.randint(MEGA_WIN_CONFIG["min_multiplier"], MEGA_WIN_CONFIG["max_multiplier"])
-        final_prize *= mega_multiplier
+        base_win_amount *= mega_multiplier
         user['mega_wins_count'] += 1
-        user['total_mega_win_amount'] += final_prize - (base_prize * bet)
+        user['total_mega_win_amount'] += base_win_amount - (base_prize * bet)
         
         bonus_messages.append(f"🎉 МЕГА-ВЫИГРЫШ! x{mega_multiplier} к выигрышу!")
+    
+    # Округляем до десятых
+    final_prize = round(base_win_amount, 1)
     
     return final_prize, bonus_messages
 
@@ -423,9 +431,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Добро пожаловать в казино!
 
-🎮 Новые системы:
-🔥 Серии побед - получайте бонусы за несколько побед подряд
-🎉 Случайные мега-выигрыши - шанс увеличить выигрыш в 2-10 раз!
+🎁 НОВЫЕ СИСТЕМЫ:
+• 🔥 Серии побед - получайте бонусы за несколько побед подряд (только в 🎰🎯🎲🎳)
+• 🎉 Случайные мега-выигрыши - шанс увеличить выигрыш в 2-10 раз!
 
 Доступные игры (ставка от 1 до 100000 ⭐):
 🎰 Слоты - 64 комбинации, 4 выигрышных (5-20x ставки)
@@ -878,7 +886,7 @@ async def play_games_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 📊 Диапазон ставки: {MIN_BET}-{MAX_BET} ⭐
 
 🎁 Новые системы:
-🔥 Серии побед - бонусы за несколько побед подряд
+🔥 Серии побед - бонусы за несколько побед подряд (только в 🎰🎯🎲🎳)
 🎉 Случайные мега-выигрыши - шанс x2-x10!
 
 Выберите игру или просто отправь любой dice эмодзи в чат!
@@ -1053,7 +1061,7 @@ async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, m
     base_prize_amount = result_config["base_prize"]
     
     # 🎰 ПРИМЕНЯЕМ СИСТЕМЫ БОНУСОВ
-    final_prize, bonus_messages = calculate_win_bonuses(user_id, base_prize_amount, cost)
+    final_prize, bonus_messages = calculate_win_bonuses(user_id, base_prize_amount, cost, emoji)
     
     result_text = ""
     
@@ -1082,7 +1090,7 @@ async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, m
             f"📊 (Списано: {cost} ⭐)"
         )
         
-        # Добавляем сообщение о прерванной серии
+        # Добавляем сообщение о прерванной серии (только для игр с сериями)
         if bonus_messages:
             result_text += "\n\n" + "\n".join(bonus_messages)
     
@@ -1407,7 +1415,7 @@ async def admin_broadcast_callback(update: Update, context: ContextTypes.DEFAULT
 Отправьте сообщение, которое будет разослано всем пользователям бота.
 
 🎰 НОВЫЕ ВОЗМОЖНОСТИ:
-• Серии побед с бонусами
+• Серии побед с бонусами (только в 🎰🎯🎲🎳)
 • Случайные мега-выигрыши
 • Обновленные игры ⚽ и 🏀
 
@@ -1537,6 +1545,7 @@ async def admin_system_callback(update: Update, context: ContextTypes.DEFAULT_TY
 • Шанс мега-выигрыша: {MEGA_WIN_CONFIG['chance']*100}%
 • Множитель мега-выигрыша: {MEGA_WIN_CONFIG['min_multiplier']}-{MEGA_WIN_CONFIG['max_multiplier']}x
 • Бонусы за серии: {len(WIN_STREAK_BONUSES)} уровней
+• Серии применяются к: 🎰🎯🎲🎳
     """
     
     keyboard = [
@@ -1743,10 +1752,10 @@ async def admin_settings_callback(update: Update, context: ContextTypes.DEFAULT_
 
 Текущие настройки:
 
-🎰 СЕРИИ ПОБЕД:
-• 3 победы: x{WIN_STREAK_BONUSES[3]['multiplier']}
-• 5 побед: x{WIN_STREAK_BONUSES[5]['multiplier']}  
-• 10 побед: x{WIN_STREAK_BONUSES[10]['multiplier']}
+🎰 СЕРИИ ПОБЕД (применяются только к 🎰🎯🎲🎳):
+• 2 победы: x{WIN_STREAK_BONUSES[2]['multiplier']}
+• 3 победы: x{WIN_STREAK_BONUSES[3]['multiplier']}  
+• 5 побед: x{WIN_STREAK_BONUSES[5]['multiplier']}
 
 🎉 МЕГА-ВЫИГРЫШИ:
 • Шанс: {MEGA_WIN_CONFIG['chance']*100}%
@@ -2031,7 +2040,7 @@ async def search_mega_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     
     try:
-        min_mega = int(context.args[0])
+        min_mega = int(context.args[1])
     except ValueError:
         await update.message.reply_text("❌ Ошибка: количество должно быть числом")
         return
@@ -2276,7 +2285,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🎰 *NSource Casino - Помощь*
 
 *🎁 НОВЫЕ СИСТЕМЫ:*
-• *🔥 Серии побед* - получайте бонусы за несколько побед подряд
+• *🔥 Серии побед* - получайте бонусы за несколько побед подряд (только в 🎰🎯🎲🎳)
 • *🎉 Случайные мега-выигрыши* - шанс увеличить выигрыш в 2-10 раз!
 • *⚽ Обновленные игры* - футбол и баскетбол с 5 исходами
 
@@ -2430,7 +2439,7 @@ def main():
     print("💰 Система с изменяемой ставкой от 1 до 100000 ⭐!")
     print("💸 Полная система вывода средств!")
     print("🎰 Режимы слотов: обычные и 777 (только джекпот)!")
-    print("🔥 НОВАЯ СИСТЕМА: Серии побед с бонусами!")
+    print("🔥 НОВАЯ СИСТЕМА: Серии побед с бонусами (только в 🎰🎯🎲🎳)!")
     print("🎉 НОВАЯ СИСТЕМА: Случайные мега-выигрыши x2-x10!")
     print("⚽ ОБНОВЛЕНИЕ: Футбол и баскетбол с 5 исходами (RTP 65-75%)!")
     print("👑 Скрытая админ-панель (только по коду)!")
