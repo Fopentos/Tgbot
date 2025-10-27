@@ -353,6 +353,9 @@ referral_codes = {}  # code -> user_id
 # 🆕 ПРОМОКОДЫ
 promo_codes = {}  # code -> {amount, uses_left, created_by, created_at, used_by}
 
+# 🆕 СИСТЕМА БАНОВ
+banned_users = {}  # user_id -> {'reason': str, 'banned_by': int, 'banned_at': str}
+
 admin_mode = defaultdict(bool)
 user_sessions = defaultdict(dict)
 withdrawal_requests = defaultdict(list)
@@ -366,7 +369,8 @@ def save_data():
             'admin_mode': dict(admin_mode),
             'withdrawal_requests': dict(withdrawal_requests),
             'referral_codes': referral_codes,
-            'promo_codes': promo_codes
+            'promo_codes': promo_codes,
+            'banned_users': banned_users
         }
         with open('data.json', 'w') as f:
             json.dump(data, f, indent=2)
@@ -381,12 +385,10 @@ def load_data():
             user_activity.update(data.get('user_activity', {}))
             admin_mode.update(data.get('admin_mode', {}))
             withdrawal_requests.update(data.get('withdrawal_requests', {}))
-            
-            # Загрузка реферальных кодов и промокодов
             referral_codes.update(data.get('referral_codes', {}))
             promo_codes.update(data.get('promo_codes', {}))
+            banned_users.update(data.get('banned_users', {}))
         
-        # Миграция данных для существующих пользователей
         migrate_user_data()
         migrate_activity_data()
         
@@ -395,9 +397,7 @@ def load_data():
 
 # 🆕 МИГРАЦИЯ ДАННЫХ ДЛЯ СУЩЕСТВУЮЩИХ ПОЛЬЗОВАТЕЛЕЙ
 def migrate_user_data():
-    """Миграция данных для существующих пользователей"""
     for user_id, data in user_data.items():
-        # Добавляем недостающие поля
         if 'win_streak' not in data:
             data['win_streak'] = 0
         if 'max_win_streak' not in data:
@@ -420,7 +420,6 @@ def migrate_user_data():
             data['used_promo_codes'] = []
 
 def migrate_activity_data():
-    """Миграция данных активности"""
     for user_id, activity in user_activity.items():
         if 'weekly_streak_days' not in activity:
             activity.update({
@@ -435,59 +434,47 @@ def migrate_activity_data():
 
 # 🆕 ОПТИМИЗИРОВАННАЯ СИСТЕМА НЕДЕЛЬНЫХ НАГРАД
 def get_week_start():
-    """Возвращает начало текущей недели (понедельник)"""
     today = datetime.datetime.now().date()
     return today - datetime.timedelta(days=today.weekday())
 
 def update_weekly_activity(user_id: int, bet_amount: float):
-    """Обновляет статистику активности для недельных наград"""
     try:
         today = datetime.datetime.now().date()
         activity = user_activity[user_id]
         
-        # Инициализация текущей недели
         if activity['current_week_start'] is None:
             activity['current_week_start'] = get_week_start().isoformat()
         
         current_week_start = datetime.date.fromisoformat(activity['current_week_start'])
         today_week_start = get_week_start()
         
-        # Проверка на начало новой недели
         if today_week_start > current_week_start:
-            # Новая неделя - сбрасываем статистику
             activity['weekly_streak_days'] = 0
             activity['weekly_total_bets'] = 0
             activity['weekly_total_games'] = 0
             activity['daily_games_count'] = 0
             activity['current_week_start'] = today_week_start.isoformat()
         
-        # Проверка смены дня
         last_activity_date = activity['last_activity_date']
         if last_activity_date:
             last_date = datetime.date.fromisoformat(last_activity_date)
             days_diff = (today - last_date).days
             
             if days_diff == 1:
-                # Последовательный день - проверяем условие минимальных игр
                 if activity['daily_games_count'] >= WEEKLY_BONUS_CONFIG["min_daily_games"]:
                     activity['weekly_streak_days'] += 1
                 else:
-                    # Не выполнили условие - сбрасываем серию
                     activity['weekly_streak_days'] = 0
             elif days_diff > 1:
-                # Пропущен день - сбрасываем серию
                 activity['weekly_streak_days'] = 0
         else:
-            # Первая активность
             activity['weekly_streak_days'] = 1
         
-        # Обновление статистики
         activity['daily_games_count'] += 1
         activity['weekly_total_games'] += 1
         activity['weekly_total_bets'] += bet_amount
         activity['last_activity_date'] = today.isoformat()
         
-        # Проверка условий для награды
         if (activity['weekly_streak_days'] >= WEEKLY_BONUS_CONFIG["required_days"] and
             activity['last_weekly_bonus_date'] != today.isoformat()):
             
@@ -500,29 +487,23 @@ def update_weekly_activity(user_id: int, bet_amount: float):
         return None
 
 def calculate_weekly_bonus(user_id: int):
-    """Рассчитывает и начисляет недельную награду"""
     try:
         activity = user_activity[user_id]
         
-        # Базовый бонус
         base_bonus = activity['weekly_total_bets'] * WEEKLY_BONUS_CONFIG["base_percent"]
         
-        # Дополнительный бонус за дополнительные игры
         min_games = WEEKLY_BONUS_CONFIG["min_daily_games"] * WEEKLY_BONUS_CONFIG["required_days"]
         extra_games = max(0, activity['weekly_total_games'] - min_games)
         extra_bonus = activity['weekly_total_bets'] * extra_games * WEEKLY_BONUS_CONFIG["bonus_per_extra_game"]
         
-        # Ограничение максимального дополнительного бонуса
         max_extra = activity['weekly_total_bets'] * WEEKLY_BONUS_CONFIG["max_extra_bonus"]
         extra_bonus = min(extra_bonus, max_extra)
         
         total_bonus = base_bonus + extra_bonus
         
-        # Начисление бонуса
         user_data[user_id]['game_balance'] += total_bonus
         activity['last_weekly_bonus_date'] = datetime.datetime.now().date().isoformat()
         
-        # Сброс статистики для новой недели
         activity['weekly_streak_days'] = 0
         activity['weekly_total_bets'] = 0
         activity['weekly_total_games'] = 0
@@ -544,38 +525,29 @@ def calculate_weekly_bonus(user_id: int):
 
 # 🎰 СИСТЕМА СЕРИЙ ПОБЕД, МЕГА-ВЫИГРЫШЕЙ И ВОЗВРАТОВ (ОПТИМИЗИРОВАННАЯ)
 def calculate_win_bonuses(user_id: int, base_prize: float, bet: int, emoji: str, is_win: bool) -> tuple:
-    """
-    Рассчитывает бонусы за серии побед, случайные мега-выигрыши и возвраты
-    Возвращает: (финальный_приз, сообщения_о_бонусах)
-    """
     user = user_data[user_id]
     bonus_messages = []
     
-    # Базовый выигрыш
     base_win_amount = base_prize * bet
     
-    # 🔄 СИСТЕМА ВОЗВРАТОВ ПРИ ПРОИГРЫШЕ (только при is_win=False)
+    # 🔄 ГАРАНТИРОВАННЫЙ ВОЗВРАТ 2-10% ПРИ ПРОИГРЫШЕ
     if not is_win:
         refund_percent = random.uniform(REFUND_CONFIG["min_refund"], REFUND_CONFIG["max_refund"])
         refund_amount = round(bet * refund_percent, 1)
         
-        # Если base_prize = 0 (полный проигрыш), заменяем на возврат
         if base_prize == 0:
             base_win_amount = refund_amount
             bonus_messages.append(f"🔄 Возврат {refund_percent*100:.1f}% от ставки: {refund_amount} ⭐")
-        # Если base_prize > 0 (частичный возврат как в футболе/баскетболе), добавляем дополнительный возврат
         else:
-            additional_refund = round(bet * (refund_percent * 0.5), 1)  # +50% к существующему возврату
+            additional_refund = round(bet * (refund_percent * 0.5), 1)
             base_win_amount += additional_refund
             bonus_messages.append(f"🔄 Доп. возврат {refund_percent*50:.1f}%: +{additional_refund} ⭐")
     
-    # 🔥 СИСТЕМА СЕРИЙ ПОБЕД (только при реальном выигрыше)
+    # 🔥 СИСТЕМА СЕРИЙ ПОБЕД
     if is_win and base_prize > 0:
-        # Увеличиваем серию только при ВЫИГРЫШЕ (не при возврате)
         user['win_streak'] += 1
         user['max_win_streak'] = max(user['max_win_streak'], user['win_streak'])
         
-        # Применяем бонусы за серии
         for streak, bonus in WIN_STREAK_BONUSES.items():
             if user['win_streak'] == streak:
                 streak_multiplier = bonus["multiplier"]
@@ -583,12 +555,11 @@ def calculate_win_bonuses(user_id: int, base_prize: float, bet: int, emoji: str,
                 bonus_messages.append(bonus["message"])
                 break
     else:
-        # Сбрасываем серию при ПРОИГРЫШЕ или возврате
         if user['win_streak'] > 0:
             bonus_messages.append(f"💔 Серия побед прервана на {user['win_streak']}!")
         user['win_streak'] = 0
     
-    # 🎉 СИСТЕМА СЛУЧАЙНЫХ МЕГА-ВЫИГРЫШЕЙ (только при реальном выигрыше)
+    # 🎉 СИСТЕМА СЛУЧАЙНЫХ МЕГА-ВЫИГРЫШЕЙ
     if is_win and base_prize > 0 and random.random() < MEGA_WIN_CONFIG["chance"]:
         mega_multiplier = random.uniform(MEGA_WIN_CONFIG["min_multiplier"], MEGA_WIN_CONFIG["max_multiplier"])
         base_win_amount *= mega_multiplier
@@ -597,42 +568,34 @@ def calculate_win_bonuses(user_id: int, base_prize: float, bet: int, emoji: str,
         
         bonus_messages.append(f"🎉 МЕГА-ВЫИГРЫШ! x{mega_multiplier:.1f} к выигрышу!")
     
-    # Округляем до десятых
     final_prize = round(base_win_amount, 1)
     
     return final_prize, bonus_messages
 
 # 🆕 РЕФЕРАЛЬНАЯ СИСТЕМА
 def generate_referral_code(user_id: int) -> str:
-    """Генерирует уникальный реферальный код"""
     code = f"REF{user_id % 10000:04d}"
     while code in referral_codes:
         code = f"REF{random.randint(1000, 9999)}"
     return code
 
 async def process_referral_reward(user_id: int, bet_amount: float, win_amount: float):
-    """Обрабатывает реферальные награды"""
     try:
         user = user_data[user_id]
         
-        # Если пользователь был приглашен кем-то
         if user['referral_by']:
             referrer_id = user['referral_by']
             
-            # Проверяем условия для начисления реферального вознаграждения
             if (user_data[user_id]['total_games'] >= REFERRAL_CONFIG["min_referee_games"] and
                 user_data[user_id]['total_deposited'] >= REFERRAL_CONFIG["min_referee_deposit"]):
                 
-                # Рассчитываем проигрыш (ставка - выигрыш)
                 loss_amount = max(0, bet_amount - win_amount)
                 
                 if loss_amount > 0:
-                    # Начисляем рефереру 10% от проигрыша
                     referral_reward = round(loss_amount * REFERRAL_CONFIG["reward_percent"], 1)
                     user_data[referrer_id]['game_balance'] += referral_reward
                     user_data[referrer_id]['referral_earnings'] += referral_reward
                     
-                    # Сохраняем данные
                     save_data()
                     
                     return referral_reward, referrer_id
@@ -645,7 +608,6 @@ async def process_referral_reward(user_id: int, bet_amount: float, win_amount: f
 
 # 🆕 СИСТЕМА ПРОМОКОДОВ
 def generate_promo_code() -> str:
-    """Генерирует уникальный промокод"""
     chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     while True:
         code = ''.join(random.choices(chars, k=8))
@@ -653,7 +615,6 @@ def generate_promo_code() -> str:
             return code
 
 def create_promo_code(amount: int, uses: int, created_by: int) -> str:
-    """Создает новый промокод"""
     code = generate_promo_code()
     promo_codes[code] = {
         'amount': amount,
@@ -666,7 +627,6 @@ def create_promo_code(amount: int, uses: int, created_by: int) -> str:
     return code
 
 def use_promo_code(user_id: int, code: str) -> bool:
-    """Активирует промокод для пользователя"""
     code = code.upper()
     
     if code not in promo_codes:
@@ -680,7 +640,6 @@ def use_promo_code(user_id: int, code: str) -> bool:
     if user_id in promo['used_by']:
         return False, "Вы уже использовали этот промокод"
     
-    # Активируем промокод
     user_data[user_id]['game_balance'] += promo['amount']
     user_data[user_id]['used_promo_codes'].append(code)
     promo['uses_left'] -= 1
@@ -689,27 +648,54 @@ def use_promo_code(user_id: int, code: str) -> bool:
     save_data()
     return True, f"Промокод активирован! На ваш баланс начислено {promo['amount']} ⭐"
 
+# 🆕 СИСТЕМА БАНОВ
+async def check_ban(user_id: int) -> tuple:
+    if user_id in banned_users:
+        return True, banned_users[user_id].get('reason', 'Не указана')
+    return False, ""
+
+async def ban_user(user_id: int, admin_id: int, reason: str = "Не указана"):
+    banned_users[user_id] = {
+        'reason': reason,
+        'banned_by': admin_id,
+        'banned_at': datetime.datetime.now().isoformat()
+    }
+    save_data()
+
+async def unban_user(user_id: int):
+    if user_id in banned_users:
+        del banned_users[user_id]
+        save_data()
+        return True
+    return False
+
 # 👤 ОСНОВНЫЕ КОМАНДЫ
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Обработка реферальной ссылки
+    user_id = update.effective_user.id
+    
+    is_banned, reason = await check_ban(user_id)
+    if is_banned:
+        await update.message.reply_text(
+            f"🚫 Вы забанены администратором.\n"
+            f"📝 Причина: {reason}\n\n"
+            f"Если вы считаете, что это ошибка, свяжитесь с администрацией."
+        )
+        return
+    
     referral_code = None
     if context.args and len(context.args) > 0:
         referral_code = context.args[0]
     
-    user_id = update.effective_user.id
-    
-    # Если передан реферальный код и пользователь еще не был приглашен
     if (referral_code and 
         referral_code in referral_codes and 
         user_data[user_id]['referral_by'] is None and
-        referral_codes[referral_code] != user_id):  # Нельзя пригласить самого себя
+        referral_codes[referral_code] != user_id):
         
         referrer_id = referral_codes[referral_code]
         user_data[user_id]['referral_by'] = referrer_id
         user_data[referrer_id]['referrals_count'] += 1
         save_data()
     
-    # Генерация реферального кода, если его нет
     if user_data[user_id]['referral_code'] is None:
         user_data[user_id]['referral_code'] = generate_referral_code(user_id)
         referral_codes[user_data[user_id]['referral_code']] = user_id
@@ -756,6 +742,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
+    
+    is_banned, reason = await check_ban(user_id)
+    if is_banned:
+        if update.callback_query:
+            await update.callback_query.message.reply_text(
+                f"🚫 Вы забанены администратором.\n"
+                f"📝 Причина: {reason}\n\n"
+                f"Если вы считаете, что это ошибка, свяжитесь с администрацией."
+            )
+        else:
+            await update.message.reply_text(
+                f"🚫 Вы забанены администратором.\n"
+                f"📝 Причина: {reason}\n\n"
+                f"Если вы считаете, что это ошибка, свяжитесь с администрацией."
+            )
+        return
+    
     data = user_data[user_id]
     activity = user_activity[user_id]
     
@@ -764,7 +767,6 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     slots_mode = data.get('slots_mode', 'normal')
     slots_mode_text = "🎰 Обычные" if slots_mode == 'normal' else "🎰 Слоты 777"
     
-    # Информация о недельной награде
     weekly_info = ""
     if activity['weekly_streak_days'] > 0:
         weekly_info = f"📅 Текущая серия дней: {activity['weekly_streak_days']}/7\n"
@@ -772,7 +774,6 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         weekly_info += f"📊 Игр за неделю: {activity['weekly_total_games']}\n"
         weekly_info += f"💰 Сумма ставок за неделю: {round(activity['weekly_total_bets'], 1)} ⭐"
     
-    # Информация о реферальной системе
     referral_info = ""
     if data['referral_code']:
         referral_info = f"👥 Рефералов: {data['referrals_count']}\n"
@@ -829,6 +830,16 @@ async def referral_system_callback(update: Update, context: ContextTypes.DEFAULT
     await query.answer()
     
     user_id = query.from_user.id
+    
+    is_banned, reason = await check_ban(user_id)
+    if is_banned:
+        await query.message.reply_text(
+            f"🚫 Вы забанены администратором.\n"
+            f"📝 Причина: {reason}\n\n"
+            f"Если вы считаете, что это ошибка, свяжитесь с администрацией."
+        )
+        return
+    
     data = user_data[user_id]
     
     referral_text = f"""
@@ -865,6 +876,15 @@ https://t.me/{(await context.bot.get_me()).username}?start={data['referral_code'
 async def promo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
+    is_banned, reason = await check_ban(user_id)
+    if is_banned:
+        await update.message.reply_text(
+            f"🚫 Вы забанены администратором.\n"
+            f"📝 Причина: {reason}\n\n"
+            f"Если вы считаете, что это ошибка, свяжитесь с администрацией."
+        )
+        return
+    
     if not context.args:
         await update.message.reply_text(
             "🎟️ Активация промокода\n\n"
@@ -881,12 +901,21 @@ async def promo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 📊 КОМАНДА АКТИВНОСТИ (ОБНОВЛЕННАЯ)
 async def activity_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    
+    is_banned, reason = await check_ban(user_id)
+    if is_banned:
+        await update.message.reply_text(
+            f"🚫 Вы забанены администратором.\n"
+            f"📝 Причина: {reason}\n\n"
+            f"Если вы считаете, что это ошибка, свяжитесь с администрацией."
+        )
+        return
+    
     activity_data = user_activity[user_id]
     
     today = datetime.datetime.now().date()
     plays_remaining = max(0, WEEKLY_BONUS_CONFIG["min_daily_games"] - activity_data['daily_games_count'])
     
-    # Расчет потенциального бонуса
     if activity_data['weekly_total_bets'] > 0:
         base_bonus = activity_data['weekly_total_bets'] * WEEKLY_BONUS_CONFIG["base_percent"]
         min_games = WEEKLY_BONUS_CONFIG["min_daily_games"] * WEEKLY_BONUS_CONFIG["required_days"]
@@ -943,8 +972,7 @@ async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, m
     
     result_text = ""
     
-    # Форматируем сообщение, заменяя {prize} на фактическое значение
-    if is_win or base_prize_amount > 0:  # Выигрыш или возврат
+    if is_win or base_prize_amount > 0:
         user_data[user_id]['game_balance'] += final_prize
         if is_win:
             user_data[user_id]['total_wins'] += 1
@@ -960,7 +988,6 @@ async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, m
         if bonus_messages:
             result_text += "\n\n" + "\n".join(bonus_messages)
     else:
-        # Полный проигрыш (без возврата)
         result_text = (
             f"{result_config['message']}\n\n"
             f"💎 Текущий баланс: {round(user_data[user_id]['game_balance'], 1)} ⭐\n"
@@ -969,7 +996,6 @@ async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, m
     
     await message.reply_text(result_text)
     
-    # 🆕 ОБРАБОТКА РЕФЕРАЛЬНЫХ НАГРАД
     if not admin_mode.get(user_id, False):
         referral_reward, referrer_id = await process_referral_reward(user_id, cost, final_prize)
         if referral_reward > 0:
@@ -979,7 +1005,6 @@ async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, m
                 f"📊 За проигрыш приглашенного друга: {cost - final_prize} ⭐"
             )
     
-    # 🆕 ОБНОВЛЕНИЕ НЕДЕЛЬНОЙ АКТИВНОСТИ
     weekly_bonus = update_weekly_activity(user_id, cost)
     if weekly_bonus:
         await message.reply_text(
@@ -998,6 +1023,16 @@ async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, m
 # 💸 СИСТЕМА ВЫВОДА СРЕДСТВ
 async def withdraw_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    
+    is_banned, reason = await check_ban(user_id)
+    if is_banned:
+        await update.message.reply_text(
+            f"🚫 Вы забанены администратором.\n"
+            f"📝 Причина: {reason}\n\n"
+            f"Если вы считаете, что это ошибка, свяжитесь с администрацией."
+        )
+        return
+    
     balance = round(user_data[user_id]['game_balance'], 1)
     
     if balance < MIN_WITHDRAWAL:
@@ -1039,6 +1074,16 @@ async def withdraw_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     user_id = query.from_user.id
+    
+    is_banned, reason = await check_ban(user_id)
+    if is_banned:
+        await query.message.reply_text(
+            f"🚫 Вы забанены администратором.\n"
+            f"📝 Причина: {reason}\n\n"
+            f"Если вы считаете, что это ошибка, свяжитесь с администрацией."
+        )
+        return
+    
     balance = round(user_data[user_id]['game_balance'], 1)
     
     if balance < MIN_WITHDRAWAL:
@@ -1179,6 +1224,15 @@ async def confirm_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def bet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
+    is_banned, reason = await check_ban(user_id)
+    if is_banned:
+        await update.message.reply_text(
+            f"🚫 Вы забанены администратором.\n"
+            f"📝 Причина: {reason}\n\n"
+            f"Если вы считаете, что это ошибка, свяжитесь с администрацией."
+        )
+        return
+    
     if not context.args:
         await update.message.reply_text(
             f"🎯 Текущая ставка: {user_data[user_id]['current_bet']} ⭐\n\n"
@@ -1210,6 +1264,23 @@ async def bet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 💰 СИСТЕМА ПОПОЛНЕНИЯ
 async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    
+    is_banned, reason = await check_ban(user_id)
+    if is_banned:
+        if update.callback_query:
+            await update.callback_query.message.reply_text(
+                f"🚫 Вы забанены администратором.\n"
+                f"📝 Причина: {reason}\n\n"
+                f"Если вы считаете, что это ошибка, свяжитесь с администрацией."
+            )
+        else:
+            await update.message.reply_text(
+                f"🚫 Вы забанены администратором.\n"
+                f"📝 Причина: {reason}\n\n"
+                f"Если вы считаете, что это ошибка, свяжитесь с администрацией."
+            )
+        return
+    
     data = user_data[user_id]
     
     deposit_text = f"""
@@ -1244,6 +1315,16 @@ async def deposit_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     user_id = query.from_user.id
+    
+    is_banned, reason = await check_ban(user_id)
+    if is_banned:
+        await query.message.reply_text(
+            f"🚫 Вы забанены администратором.\n"
+            f"📝 Причина: {reason}\n\n"
+            f"Если вы считаете, что это ошибка, свяжитесь с администрацией."
+        )
+        return
+    
     current_balance = round(user_data[user_id]['game_balance'], 1)
     
     deposit_text = f"""
@@ -1272,6 +1353,17 @@ async def deposit_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_deposit_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    
+    user_id = query.from_user.id
+    
+    is_banned, reason = await check_ban(user_id)
+    if is_banned:
+        await query.message.reply_text(
+            f"🚫 Вы забанены администратором.\n"
+            f"📝 Причина: {reason}\n\n"
+            f"Если вы считаете, что это ошибка, свяжитесь с администрацией."
+        )
+        return
     
     product_key = query.data.replace("buy_", "")
     product = PRODUCTS[product_key]
@@ -1318,6 +1410,16 @@ async def play_games_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
     
     user_id = query.from_user.id
+    
+    is_banned, reason = await check_ban(user_id)
+    if is_banned:
+        await query.message.reply_text(
+            f"🚫 Вы забанены администратором.\n"
+            f"📝 Причина: {reason}\n\n"
+            f"Если вы считаете, что это ошибка, свяжитесь с администрацией."
+        )
+        return
+    
     balance = round(user_data[user_id]['game_balance'], 1)
     current_bet = user_data[user_id]['current_bet']
     slots_mode = user_data[user_id].get('slots_mode', 'normal')
@@ -1363,6 +1465,16 @@ async def handle_game_selection(update: Update, context: ContextTypes.DEFAULT_TY
     await query.answer()
     
     user_id = query.from_user.id
+    
+    is_banned, reason = await check_ban(user_id)
+    if is_banned:
+        await query.message.reply_text(
+            f"🚫 Вы забанены администратором.\n"
+            f"📝 Причина: {reason}\n\n"
+            f"Если вы считаете, что это ошибка, свяжитесь с администрацией."
+        )
+        return
+    
     game_type = query.data.replace("play_", "")
     current_bet = user_data[user_id]['current_bet']
     
@@ -1426,6 +1538,15 @@ async def handle_user_dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     user_id = update.effective_user.id
     
+    is_banned, reason = await check_ban(user_id)
+    if is_banned:
+        await message.reply_text(
+            f"🚫 Вы забанены администратором.\n"
+            f"📝 Причина: {reason}\n\n"
+            f"Если вы считаете, что это ошибка, свяжитесь с администрацией."
+        )
+        return
+    
     if not message.dice:
         return
     
@@ -1476,6 +1597,16 @@ async def change_bet_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
     
     user_id = query.from_user.id
+    
+    is_banned, reason = await check_ban(user_id)
+    if is_banned:
+        await query.message.reply_text(
+            f"🚫 Вы забанены администратором.\n"
+            f"📝 Причина: {reason}\n\n"
+            f"Если вы считаете, что это ошибка, свяжитесь с администрацией."
+        )
+        return
+    
     current_bet = user_data[user_id]['current_bet']
     
     bet_text = f"""
@@ -1530,200 +1661,94 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ Неверный код администратора!")
 
-# 🆕 КОМАНДА /admin help ДЛЯ АДМИНОВ
-async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# 🆕 КОМАНДА БАНИРОВАНИЯ
+async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if not admin_mode.get(user_id, False):
         await update.message.reply_text("❌ У вас нет прав администратора!")
         return
     
-    help_text = """
-👑 АДМИН КОМАНДЫ - ПОЛНЫЙ СПИСОК
-
-🔧 ОСНОВНЫЕ КОМАНДЫ:
-/admin <код> - Активировать режим админа
-/admin help - Эта справка
-
-📊 СТАТИСТИКА И УПРАВЛЕНИЕ:
-/stats - Детальная статистика бота
-/users - Список пользователей
-/top - Топ игроков по разным категориям
-
-💰 УПРАВЛЕНИЕ БАЛАНСАМИ:
-/addbalance <user_id> <amount> - Добавить баланс
-/setbalance <user_id> <amount> - Установить баланс
-/resetbalance <user_id> - Сбросить баланс
-
-🔍 ПОИСК ПОЛЬЗОВАТЕЛЕЙ:
-/searchid <user_id> - Найти пользователя по ID
-/searchstreak <min_streak> - Найти по минимальной серии побед
-/searchmega <min_mega> - Найти по минимальному количеству мега-выигрышей
-
-🔄 УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ:
-/resetuser <user_id> - Полный сброс пользователя
-/ban <user_id> <причина> - Забанить пользователя
-/withdrawals - Просмотр заявок на вывод
-
-🎟️ СИСТЕМА ПРОМОКОДОВ:
-/promo_create <сумма> <использований> - Создать промокод
-/promo_list - Список промокодов
-/promo_delete <код> - Удалить промокод
-/promo_info <код> - Информация о промокоде
-
-📢 РАССЫЛКА:
-Отправьте сообщение после команды /admin_broadcast
-
-🎮 ТЕСТИРОВАНИЕ:
-Используйте админ-панель для тестирования игр
-
-💾 СИСТЕМА:
-/admin_backup - Создать резервную копию
-
-⚙️ ДОСТУП К АДМИН-ПАНЕЛИ:
-Используйте кнопку в профиле или команды выше
-    """
-    
-    await update.message.reply_text(help_text)
-
-# 🆕 АДМИН КОМАНДЫ ДЛЯ ПРОМОКОДОВ
-async def promo_create_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    if not admin_mode.get(user_id, False):
-        await update.message.reply_text("❌ У вас нет прав администратора!")
-        return
-    
-    if len(context.args) != 2:
-        await update.message.reply_text(
-            "🎟️ Создание промокода\n\n"
-            "Использование: /promo_create <сумма> <использований>\n\n"
-            "Примеры:\n"
-            "/promo_create 100 50 - промокод на 100 ⭐ с 50 использованиями\n"
-            "/promo_create 500 10 - промокод на 500 ⭐ с 10 использованиями"
-        )
+    if len(context.args) < 2:
+        await update.message.reply_text("Использование: /ban <user_id> <причина>")
         return
     
     try:
-        amount = int(context.args[0])
-        uses = int(context.args[1])
+        target_id = int(context.args[0])
+        reason = ' '.join(context.args[1:])
         
-        if amount < PROMO_CONFIG["min_amount"] or amount > PROMO_CONFIG["max_amount"]:
-            await update.message.reply_text(
-                f"❌ Сумма промокода должна быть от {PROMO_CONFIG['min_amount']} до {PROMO_CONFIG['max_amount']} ⭐"
-            )
+        if target_id not in user_data:
+            await update.message.reply_text("❌ Пользователь не найден!")
             return
         
-        if len(promo_codes) >= PROMO_CONFIG["max_active_promos"]:
-            await update.message.reply_text(
-                f"❌ Достигнут лимит активных промокодов: {PROMO_CONFIG['max_active_promos']}"
-            )
+        if target_id in admin_mode and admin_mode[target_id]:
+            await update.message.reply_text("❌ Нельзя забанить администратора!")
             return
         
-        promo_code = create_promo_code(amount, uses, user_id)
+        await ban_user(target_id, user_id, reason)
         
         await update.message.reply_text(
-            f"✅ Промокод создан!\n\n"
-            f"🎟️ Код: {promo_code}\n"
-            f"💰 Сумма: {amount} ⭐\n"
-            f"📊 Использований: {uses}\n"
-            f"👤 Создал: {user_id}"
+            f"🚫 Пользователь {target_id} забанен!\n"
+            f"📝 Причина: {reason}"
         )
         
     except ValueError:
-        await update.message.reply_text("❌ Пожалуйста, введите корректные числа")
+        await update.message.reply_text("❌ Неверный формат ID!")
 
-async def promo_list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# 🆕 КОМАНДА РАЗБАНИВАНИЯ
+async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if not admin_mode.get(user_id, False):
         await update.message.reply_text("❌ У вас нет прав администратора!")
         return
     
-    if not promo_codes:
-        await update.message.reply_text("📭 Активных промокодов нет")
+    if len(context.args) != 1:
+        await update.message.reply_text("Использование: /unban <user_id>")
         return
     
-    promo_list = "🎟️ СПИСОК АКТИВНЫХ ПРОМОКОДОВ:\n\n"
+    try:
+        target_id = int(context.args[0])
+        
+        success = await unban_user(target_id)
+        
+        if success:
+            await update.message.reply_text(f"✅ Пользователь {target_id} разбанен!")
+        else:
+            await update.message.reply_text("❌ Пользователь не найден в списке забаненных!")
+        
+    except ValueError:
+        await update.message.reply_text("❌ Неверный формат ID!")
+
+# 🆕 КОМАНДА СПИСКА ЗАБАНЕННЫХ
+async def banlist_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
     
-    for code, data in list(promo_codes.items())[:20]:  # Показываем первые 20
-        promo_list += (
-            f"🎟️ {code}\n"
-            f"💰 {data['amount']} ⭐ | 📊 {data['uses_left']}/{data['uses_left'] + len(data['used_by'])} использований\n"
-            f"👤 Создал: {data['created_by']} | 📅 {data['created_at'][:10]}\n"
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if not banned_users:
+        await update.message.reply_text("📋 Список забаненных пользователей пуст")
+        return
+    
+    banlist_text = "🚫 ЗАБАНЕННЫЕ ПОЛЬЗОВАТЕЛИ:\n\n"
+    
+    for banned_id, ban_data in list(banned_users.items())[:20]:
+        banlist_text += (
+            f"👤 ID: {banned_id}\n"
+            f"📝 Причина: {ban_data.get('reason', 'Не указана')}\n"
+            f"👮 Забанил: {ban_data.get('banned_by', 'Неизвестно')}\n"
+            f"📅 Дата: {ban_data.get('banned_at', 'Неизвестно')[:16]}\n"
             f"────────────────────\n"
         )
     
-    if len(promo_codes) > 20:
-        promo_list += f"\n... и еще {len(promo_codes) - 20} промокодов"
+    if len(banned_users) > 20:
+        banlist_text += f"\n... и еще {len(banned_users) - 20} пользователей"
     
-    await update.message.reply_text(promo_list)
+    await update.message.reply_text(banlist_text)
 
-async def promo_delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    if not admin_mode.get(user_id, False):
-        await update.message.reply_text("❌ У вас нет прав администратора!")
-        return
-    
-    if len(context.args) != 1:
-        await update.message.reply_text(
-            "🎟️ Удаление промокода\n\n"
-            "Использование: /promo_delete <код>\n\n"
-            "Пример: /promo_delete ABC123"
-        )
-        return
-    
-    code = context.args[0].upper()
-    
-    if code not in promo_codes:
-        await update.message.reply_text("❌ Промокод не найден")
-        return
-    
-    del promo_codes[code]
-    save_data()
-    
-    await update.message.reply_text(f"✅ Промокод {code} удален")
-
-async def promo_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    if not admin_mode.get(user_id, False):
-        await update.message.reply_text("❌ У вас нет прав администратора!")
-        return
-    
-    if len(context.args) != 1:
-        await update.message.reply_text(
-            "🎟️ Информация о промокоде\n\n"
-            "Использование: /promo_info <код>\n\n"
-            "Пример: /promo_info ABC123"
-        )
-        return
-    
-    code = context.args[0].upper()
-    
-    if code not in promo_codes:
-        await update.message.reply_text("❌ Промокод не найден")
-        return
-    
-    promo = promo_codes[code]
-    total_uses = promo['uses_left'] + len(promo['used_by'])
-    
-    info_text = (
-        f"🎟️ ИНФОРМАЦИЯ О ПРОМОКОДЕ {code}\n\n"
-        f"💰 Сумма: {promo['amount']} ⭐\n"
-        f"📊 Использований: {total_uses - promo['uses_left']}/{total_uses}\n"
-        f"👤 Создал: {promo['created_by']}\n"
-        f"📅 Создан: {promo['created_at'][:16]}\n"
-    )
-    
-    if promo['used_by']:
-        info_text += f"\n👥 Использовали: {', '.join(map(str, promo['used_by'][:10]))}"
-        if len(promo['used_by']) > 10:
-            info_text += f" ... и еще {len(promo['used_by']) - 10}"
-    
-    await update.message.reply_text(info_text)
-
+# 👑 АДМИН ПАНЕЛЬ
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -2740,35 +2765,6 @@ async def resetuser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("❌ Неверный формат ID!")
 
-# 🚫 КОМАНДА БАНА
-async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    if not admin_mode.get(user_id, False):
-        await update.message.reply_text("❌ У вас нет прав администратора!")
-        return
-    
-    if len(context.args) < 2:
-        await update.message.reply_text("Использование: /ban <user_id> <причина>")
-        return
-    
-    try:
-        target_id = int(context.args[0])
-        reason = ' '.join(context.args[1:])
-        
-        if target_id not in user_data:
-            await update.message.reply_text("❌ Пользователь не найден!")
-            return
-        
-        await update.message.reply_text(
-            f"🚫 Пользователь {target_id} забанен!\n"
-            f"📝 Причина: {reason}\n\n"
-            f"⚠️ ВНИМАНИЕ: Система бана еще не полностью реализована."
-        )
-        
-    except ValueError:
-        await update.message.reply_text("❌ Неверный формат ID!")
-
 # 💸 КОМАНДА ВЫВОДОВ
 async def withdrawals_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -2875,6 +2871,144 @@ async def admin_backup_command(update: Update, context: ContextTypes.DEFAULT_TYP
         f"💰 Баланс: {sum(round(data['game_balance'], 1) for data in user_data.values())} ⭐"
     )
 
+# 🆕 КОМАНДЫ ДЛЯ ПРОМОКОДОВ
+async def promo_create_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if len(context.args) != 2:
+        await update.message.reply_text(
+            "🎟️ Создание промокода\n\n"
+            "Использование: /promo_create <сумма> <использований>\n\n"
+            "Примеры:\n"
+            "/promo_create 100 50 - промокод на 100 ⭐ с 50 использованиями\n"
+            "/promo_create 500 10 - промокод на 500 ⭐ с 10 использованиями"
+        )
+        return
+    
+    try:
+        amount = int(context.args[0])
+        uses = int(context.args[1])
+        
+        if amount < PROMO_CONFIG["min_amount"] or amount > PROMO_CONFIG["max_amount"]:
+            await update.message.reply_text(
+                f"❌ Сумма промокода должна быть от {PROMO_CONFIG['min_amount']} до {PROMO_CONFIG['max_amount']} ⭐"
+            )
+            return
+        
+        if len(promo_codes) >= PROMO_CONFIG["max_active_promos"]:
+            await update.message.reply_text(
+                f"❌ Достигнут лимит активных промокодов: {PROMO_CONFIG['max_active_promos']}"
+            )
+            return
+        
+        promo_code = create_promo_code(amount, uses, user_id)
+        
+        await update.message.reply_text(
+            f"✅ Промокод создан!\n\n"
+            f"🎟️ Код: {promo_code}\n"
+            f"💰 Сумма: {amount} ⭐\n"
+            f"📊 Использований: {uses}\n"
+            f"👤 Создал: {user_id}"
+        )
+        
+    except ValueError:
+        await update.message.reply_text("❌ Пожалуйста, введите корректные числа")
+
+async def promo_list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if not promo_codes:
+        await update.message.reply_text("📭 Активных промокодов нет")
+        return
+    
+    promo_list = "🎟️ СПИСОК АКТИВНЫХ ПРОМОКОДОВ:\n\n"
+    
+    for code, data in list(promo_codes.items())[:20]:
+        promo_list += (
+            f"🎟️ {code}\n"
+            f"💰 {data['amount']} ⭐ | 📊 {data['uses_left']}/{data['uses_left'] + len(data['used_by'])} использований\n"
+            f"👤 Создал: {data['created_by']} | 📅 {data['created_at'][:10]}\n"
+            f"────────────────────\n"
+        )
+    
+    if len(promo_codes) > 20:
+        promo_list += f"\n... и еще {len(promo_codes) - 20} промокодов"
+    
+    await update.message.reply_text(promo_list)
+
+async def promo_delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if len(context.args) != 1:
+        await update.message.reply_text(
+            "🎟️ Удаление промокода\n\n"
+            "Использование: /promo_delete <код>\n\n"
+            "Пример: /promo_delete ABC123"
+        )
+        return
+    
+    code = context.args[0].upper()
+    
+    if code not in promo_codes:
+        await update.message.reply_text("❌ Промокод не найден")
+        return
+    
+    del promo_codes[code]
+    save_data()
+    
+    await update.message.reply_text(f"✅ Промокод {code} удален")
+
+async def promo_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if len(context.args) != 1:
+        await update.message.reply_text(
+            "🎟️ Информация о промокоде\n\n"
+            "Использование: /promo_info <код>\n\n"
+            "Пример: /promo_info ABC123"
+        )
+        return
+    
+    code = context.args[0].upper()
+    
+    if code not in promo_codes:
+        await update.message.reply_text("❌ Промокод не найден")
+        return
+    
+    promo = promo_codes[code]
+    total_uses = promo['uses_left'] + len(promo['used_by'])
+    
+    info_text = (
+        f"🎟️ ИНФОРМАЦИЯ О ПРОМОКОДЕ {code}\n\n"
+        f"💰 Сумма: {promo['amount']} ⭐\n"
+        f"📊 Использований: {total_uses - promo['uses_left']}/{total_uses}\n"
+        f"👤 Создал: {promo['created_by']}\n"
+        f"📅 Создан: {promo['created_at'][:16]}\n"
+    )
+    
+    if promo['used_by']:
+        info_text += f"\n👥 Использовали: {', '.join(map(str, promo['used_by'][:10]))}"
+        if len(promo['used_by']) > 10:
+            info_text += f" ... и еще {len(promo['used_by']) - 10}"
+    
+    await update.message.reply_text(info_text)
+
 # 🚀 WEBHOOK ДЛЯ RAILWAY
 app = Flask(__name__)
 
@@ -2922,6 +3056,8 @@ def main():
     # 🔄 АДМИН КОМАНДЫ УПРАВЛЕНИЯ
     application.add_handler(CommandHandler("resetuser", resetuser_command))
     application.add_handler(CommandHandler("ban", ban_command))
+    application.add_handler(CommandHandler("unban", unban_command))
+    application.add_handler(CommandHandler("banlist", banlist_command))
     application.add_handler(CommandHandler("withdrawals", withdrawals_command))
     application.add_handler(CommandHandler("admin_backup", admin_backup_command))
     
@@ -2977,6 +3113,64 @@ def main():
     # 🚀 ЗАПУСК БОТА
     print("🎰 NSource Casino Bot запущен!")
     application.run_polling()
+
+# 🆕 КОМАНДА АДМИН ПОМОЩИ
+async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    help_text = """
+👑 АДМИН КОМАНДЫ - ПОЛНЫЙ СПИСОК
+
+🔧 ОСНОВНЫЕ КОМАНДЫ:
+/admin <код> - Активировать режим админа
+/admin help - Эта справка
+
+📊 СТАТИСТИКА И УПРАВЛЕНИЕ:
+/stats - Детальная статистика бота
+/users - Список пользователей
+/top - Топ игроков по разным категориям
+
+💰 УПРАВЛЕНИЕ БАЛАНСАМИ:
+/addbalance <user_id> <amount> - Добавить баланс
+/setbalance <user_id> <amount> - Установить баланс
+/resetbalance <user_id> - Сбросить баланс
+
+🔍 ПОИСК ПОЛЬЗОВАТЕЛЕЙ:
+/searchid <user_id> - Найти пользователя по ID
+/searchstreak <min_streak> - Найти по минимальной серии побед
+/searchmega <min_mega> - Найти по минимальному количеству мега-выигрышей
+
+🔄 УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ:
+/resetuser <user_id> - Полный сброс пользователя
+/ban <user_id> <причина> - Забанить пользователя
+/unban <user_id> - Разбанить пользователя
+/banlist - Список забаненных пользователей
+/withdrawals - Просмотр заявок на вывод
+
+🎟️ СИСТЕМА ПРОМОКОДОВ:
+/promo_create <сумма> <использований> - Создать промокод
+/promo_list - Список промокодов
+/promo_delete <код> - Удалить промокод
+/promo_info <код> - Информация о промокоде
+
+📢 РАССЫЛКА:
+Отправьте сообщение после команды /admin_broadcast
+
+🎮 ТЕСТИРОВАНИЕ:
+Используйте админ-панель для тестирования игр
+
+💾 СИСТЕМА:
+/admin_backup - Создать резервную копию
+
+⚙️ ДОСТУП К АДМИН-ПАНЕЛИ:
+Используйте кнопку в профиле или команды выше
+    """
+    
+    await update.message.reply_text(help_text)
 
 if __name__ == "__main__":
     main()
