@@ -100,6 +100,21 @@ WEEKLY_BONUS_CONFIG = {
     "max_extra_bonus": 0.02         # максимальная доп. награда +2%
 }
 
+# 👥 РЕФЕРАЛЬНАЯ СИСТЕМА
+REFERRAL_CONFIG = {
+    "reward_percent": 0.10,  # 10% от проигрыша приглашенного
+    "min_referee_games": 3,  # минимальное количество игр приглашенного
+    "min_referee_deposit": 10  # минимальный депозит приглашенного
+}
+
+# 🎟️ СИСТЕМА ПРОМОКОДОВ
+PROMO_CONFIG = {
+    "max_active_promos": 50,  # максимальное количество активных промокодов
+    "default_uses": 100,      # количество использований по умолчанию
+    "min_amount": 5,          # минимальная сумма промокода
+    "max_amount": 1000        # максимальная сумма промокода
+}
+
 # 🎮 ПОЛНАЯ КОНФИГУРАЦИЯ ИГР (ОБНОВЛЕННАЯ)
 GAMES_CONFIG = {
     "🎰": {
@@ -313,7 +328,12 @@ user_data = defaultdict(lambda: {
     'win_streak': 0,
     'max_win_streak': 0,
     'mega_wins_count': 0,
-    'total_mega_win_amount': 0.0
+    'total_mega_win_amount': 0.0,
+    'referral_code': None,
+    'referral_by': None,
+    'referrals_count': 0,
+    'referral_earnings': 0.0,
+    'used_promo_codes': []
 })
 
 # 🆕 ОБНОВЛЕННАЯ СИСТЕМА АКТИВНОСТИ С НЕДЕЛЬНЫМИ НАГРАДАМИ
@@ -327,6 +347,12 @@ user_activity = defaultdict(lambda: {
     'current_week_start': None         # начало текущей недели
 })
 
+# 🆕 РЕФЕРАЛЬНЫЕ КОДЫ
+referral_codes = {}  # code -> user_id
+
+# 🆕 ПРОМОКОДЫ
+promo_codes = {}  # code -> {amount, uses_left, created_by, created_at, used_by}
+
 admin_mode = defaultdict(bool)
 user_sessions = defaultdict(dict)
 withdrawal_requests = defaultdict(list)
@@ -338,7 +364,9 @@ def save_data():
             'user_data': dict(user_data),
             'user_activity': dict(user_activity),
             'admin_mode': dict(admin_mode),
-            'withdrawal_requests': dict(withdrawal_requests)
+            'withdrawal_requests': dict(withdrawal_requests),
+            'referral_codes': referral_codes,
+            'promo_codes': promo_codes
         }
         with open('data.json', 'w') as f:
             json.dump(data, f, indent=2)
@@ -353,6 +381,10 @@ def load_data():
             user_activity.update(data.get('user_activity', {}))
             admin_mode.update(data.get('admin_mode', {}))
             withdrawal_requests.update(data.get('withdrawal_requests', {}))
+            
+            # Загрузка реферальных кодов и промокодов
+            referral_codes.update(data.get('referral_codes', {}))
+            promo_codes.update(data.get('promo_codes', {}))
         
         # Миграция данных для существующих пользователей
         migrate_user_data()
@@ -376,6 +408,16 @@ def migrate_user_data():
             data['total_mega_win_amount'] = 0.0
         if 'slots_mode' not in data:
             data['slots_mode'] = 'normal'
+        if 'referral_code' not in data:
+            data['referral_code'] = None
+        if 'referral_by' not in data:
+            data['referral_by'] = None
+        if 'referrals_count' not in data:
+            data['referrals_count'] = 0
+        if 'referral_earnings' not in data:
+            data['referral_earnings'] = 0.0
+        if 'used_promo_codes' not in data:
+            data['used_promo_codes'] = []
 
 def migrate_activity_data():
     """Миграция данных активности"""
@@ -560,8 +602,119 @@ def calculate_win_bonuses(user_id: int, base_prize: float, bet: int, emoji: str,
     
     return final_prize, bonus_messages
 
+# 🆕 РЕФЕРАЛЬНАЯ СИСТЕМА
+def generate_referral_code(user_id: int) -> str:
+    """Генерирует уникальный реферальный код"""
+    code = f"REF{user_id % 10000:04d}"
+    while code in referral_codes:
+        code = f"REF{random.randint(1000, 9999)}"
+    return code
+
+async def process_referral_reward(user_id: int, bet_amount: float, win_amount: float):
+    """Обрабатывает реферальные награды"""
+    try:
+        user = user_data[user_id]
+        
+        # Если пользователь был приглашен кем-то
+        if user['referral_by']:
+            referrer_id = user['referral_by']
+            
+            # Проверяем условия для начисления реферального вознаграждения
+            if (user_data[user_id]['total_games'] >= REFERRAL_CONFIG["min_referee_games"] and
+                user_data[user_id]['total_deposited'] >= REFERRAL_CONFIG["min_referee_deposit"]):
+                
+                # Рассчитываем проигрыш (ставка - выигрыш)
+                loss_amount = max(0, bet_amount - win_amount)
+                
+                if loss_amount > 0:
+                    # Начисляем рефереру 10% от проигрыша
+                    referral_reward = round(loss_amount * REFERRAL_CONFIG["reward_percent"], 1)
+                    user_data[referrer_id]['game_balance'] += referral_reward
+                    user_data[referrer_id]['referral_earnings'] += referral_reward
+                    
+                    # Сохраняем данные
+                    save_data()
+                    
+                    return referral_reward, referrer_id
+        
+        return 0, None
+        
+    except Exception as e:
+        print(f"Ошибка в process_referral_reward: {e}")
+        return 0, None
+
+# 🆕 СИСТЕМА ПРОМОКОДОВ
+def generate_promo_code() -> str:
+    """Генерирует уникальный промокод"""
+    chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    while True:
+        code = ''.join(random.choices(chars, k=8))
+        if code not in promo_codes:
+            return code
+
+def create_promo_code(amount: int, uses: int, created_by: int) -> str:
+    """Создает новый промокод"""
+    code = generate_promo_code()
+    promo_codes[code] = {
+        'amount': amount,
+        'uses_left': uses,
+        'created_by': created_by,
+        'created_at': datetime.datetime.now().isoformat(),
+        'used_by': []
+    }
+    save_data()
+    return code
+
+def use_promo_code(user_id: int, code: str) -> bool:
+    """Активирует промокод для пользователя"""
+    code = code.upper()
+    
+    if code not in promo_codes:
+        return False, "Промокод не найден"
+    
+    promo = promo_codes[code]
+    
+    if promo['uses_left'] <= 0:
+        return False, "Промокод уже использован"
+    
+    if user_id in promo['used_by']:
+        return False, "Вы уже использовали этот промокод"
+    
+    # Активируем промокод
+    user_data[user_id]['game_balance'] += promo['amount']
+    user_data[user_id]['used_promo_codes'].append(code)
+    promo['uses_left'] -= 1
+    promo['used_by'].append(user_id)
+    
+    save_data()
+    return True, f"Промокод активирован! На ваш баланс начислено {promo['amount']} ⭐"
+
 # 👤 ОСНОВНЫЕ КОМАНДЫ
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Обработка реферальной ссылки
+    referral_code = None
+    if context.args and len(context.args) > 0:
+        referral_code = context.args[0]
+    
+    user_id = update.effective_user.id
+    
+    # Если передан реферальный код и пользователь еще не был приглашен
+    if (referral_code and 
+        referral_code in referral_codes and 
+        user_data[user_id]['referral_by'] is None and
+        referral_codes[referral_code] != user_id):  # Нельзя пригласить самого себя
+        
+        referrer_id = referral_codes[referral_code]
+        user_data[user_id]['referral_by'] = referrer_id
+        user_data[referrer_id]['referrals_count'] += 1
+        save_data()
+    
+    # Генерация реферального кода, если его нет
+    if user_data[user_id]['referral_code'] is None:
+        user_data[user_id]['referral_code'] = generate_referral_code(user_id)
+        referral_codes[user_data[user_id]['referral_code']] = user_id
+        save_data()
+
     welcome_text = """
 🎰 NSource Casino
 
@@ -572,6 +725,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • 🎉 Случайные мега-выигрыши - шанс 0.6% увеличить выигрыш в 1.5-5 раз!
 • 🔄 Возвраты 2-10% - даже при проигрыше получайте часть ставки обратно!
 • 🏆 Недельные награды - играйте 5+ раз в день 7 дней подряд для бонуса 1-3% от суммы ставок!
+• 👥 Реферальная система - приглашайте друзей и получайте 10% от их проигрышей!
 
 Доступные игры (ставка от 1 до 100000 ⭐):
 🎰 Слоты - 64 комбинации, 4 выигрышных (5-20x ставки)
@@ -592,7 +746,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🎮 Играть", callback_data="play_games")],
         [InlineKeyboardButton("📊 Профиль", callback_data="back_to_profile")],
         [InlineKeyboardButton("💰 Пополнить", callback_data="deposit")],
-        [InlineKeyboardButton("🎯 Изменить ставку", callback_data="change_bet")]
+        [InlineKeyboardButton("🎯 Изменить ставку", callback_data="change_bet")],
+        [InlineKeyboardButton("👥 Реферальная система", callback_data="referral_system")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -617,6 +772,12 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         weekly_info += f"📊 Игр за неделю: {activity['weekly_total_games']}\n"
         weekly_info += f"💰 Сумма ставок за неделю: {round(activity['weekly_total_bets'], 1)} ⭐"
     
+    # Информация о реферальной системе
+    referral_info = ""
+    if data['referral_code']:
+        referral_info = f"👥 Рефералов: {data['referrals_count']}\n"
+        referral_info += f"💰 Заработано с рефералов: {round(data['referral_earnings'], 1)} ⭐"
+    
     profile_text = f"""
 📊 Личный кабинет
 
@@ -640,13 +801,16 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
 💫 Сумма мега-выигрышей: {round(data['total_mega_win_amount'], 1)} ⭐
 
 {weekly_info}
+
+{referral_info}
     """
     
     keyboard = [
         [InlineKeyboardButton("💰 Пополнить баланс", callback_data="deposit"),
          InlineKeyboardButton("💸 Вывести ⭐", callback_data="withdraw")],
         [InlineKeyboardButton("🎮 Играть", callback_data="play_games")],
-        [InlineKeyboardButton("🎯 Изменить ставку", callback_data="change_bet")]
+        [InlineKeyboardButton("🎯 Изменить ставку", callback_data="change_bet")],
+        [InlineKeyboardButton("👥 Реферальная система", callback_data="referral_system")]
     ]
     
     if admin_mode.get(user_id, False):
@@ -658,6 +822,61 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.callback_query.edit_message_text(profile_text, reply_markup=reply_markup)
     else:
         await update.message.reply_text(profile_text, reply_markup=reply_markup)
+
+# 🆕 РЕФЕРАЛЬНАЯ СИСТЕМА - КОМАНДЫ
+async def referral_system_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    data = user_data[user_id]
+    
+    referral_text = f"""
+👥 РЕФЕРАЛЬНАЯ СИСТЕМА
+
+Приглашайте друзей и получайте 10% от их проигрышей!
+
+📊 Ваша статистика:
+🎯 Ваш реферальный код: {data['referral_code']}
+👥 Приглашено друзей: {data['referrals_count']}
+💰 Заработано с рефералов: {round(data['referral_earnings'], 1)} ⭐
+
+🔗 Ваша реферальная ссылка:
+https://t.me/{(await context.bot.get_me()).username}?start={data['referral_code']}
+
+📋 Как это работает:
+1. Делитесь ссылкой с друзьями
+2. Друг регистрируется по вашей ссылке
+3. Когда друг проигрывает, вы получаете 10% от его проигрыша
+4. Друг должен сыграть минимум {REFERRAL_CONFIG['min_referee_games']} игр и пополнить минимум {REFERRAL_CONFIG['min_referee_deposit']} ⭐
+
+💡 Пример: Если ваш друг проиграл 100 ⭐, вы получите 10 ⭐!
+    """
+    
+    keyboard = [
+        [InlineKeyboardButton("📊 Профиль", callback_data="back_to_profile")],
+        [InlineKeyboardButton("🎮 Играть", callback_data="play_games")]
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(referral_text, reply_markup=reply_markup)
+
+# 🆕 КОМАНДА АКТИВАЦИИ ПРОМОКОДА
+async def promo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not context.args:
+        await update.message.reply_text(
+            "🎟️ Активация промокода\n\n"
+            "Использование: /promo <код>\n\n"
+            "Пример: /promo SUMMER2024"
+        )
+        return
+    
+    promo_code = context.args[0].upper()
+    success, message = use_promo_code(user_id, promo_code)
+    
+    await update.message.reply_text(message)
 
 # 📊 КОМАНДА АКТИВНОСТИ (ОБНОВЛЕННАЯ)
 async def activity_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -749,6 +968,16 @@ async def process_dice_result(user_id: int, emoji: str, value: int, cost: int, m
         )
     
     await message.reply_text(result_text)
+    
+    # 🆕 ОБРАБОТКА РЕФЕРАЛЬНЫХ НАГРАД
+    if not admin_mode.get(user_id, False):
+        referral_reward, referrer_id = await process_referral_reward(user_id, cost, final_prize)
+        if referral_reward > 0:
+            await message.reply_text(
+                f"👥 РЕФЕРАЛЬНАЯ НАГРАДА!\n\n"
+                f"💎 Пользователь {referrer_id} получает {referral_reward} ⭐\n"
+                f"📊 За проигрыш приглашенного друга: {cost - final_prize} ⭐"
+            )
     
     # 🆕 ОБНОВЛЕНИЕ НЕДЕЛЬНОЙ АКТИВНОСТИ
     weekly_bonus = update_weekly_activity(user_id, cost)
@@ -1108,6 +1337,7 @@ async def play_games_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 🎉 Случайные мега-выигрыши - шанс 0.6% x1.5-x5!
 🔄 Возвраты 2-10% - даже при проигрыше получайте часть ставки!
 🏆 Недельные награды - играйте 5+ раз в день 7 дней подряд
+👥 Реферальная система - получайте 10% от проигрышей друзей!
 
 Выберите игру или просто отправь любой dice эмодзи в чат!
     """
@@ -1335,6 +1565,12 @@ async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 /ban <user_id> <причина> - Забанить пользователя
 /withdrawals - Просмотр заявок на вывод
 
+🎟️ СИСТЕМА ПРОМОКОДОВ:
+/promo_create <сумма> <использований> - Создать промокод
+/promo_list - Список промокодов
+/promo_delete <код> - Удалить промокод
+/promo_info <код> - Информация о промокоде
+
 📢 РАССЫЛКА:
 Отправьте сообщение после команды /admin_broadcast
 
@@ -1349,6 +1585,144 @@ async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """
     
     await update.message.reply_text(help_text)
+
+# 🆕 АДМИН КОМАНДЫ ДЛЯ ПРОМОКОДОВ
+async def promo_create_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if len(context.args) != 2:
+        await update.message.reply_text(
+            "🎟️ Создание промокода\n\n"
+            "Использование: /promo_create <сумма> <использований>\n\n"
+            "Примеры:\n"
+            "/promo_create 100 50 - промокод на 100 ⭐ с 50 использованиями\n"
+            "/promo_create 500 10 - промокод на 500 ⭐ с 10 использованиями"
+        )
+        return
+    
+    try:
+        amount = int(context.args[0])
+        uses = int(context.args[1])
+        
+        if amount < PROMO_CONFIG["min_amount"] or amount > PROMO_CONFIG["max_amount"]:
+            await update.message.reply_text(
+                f"❌ Сумма промокода должна быть от {PROMO_CONFIG['min_amount']} до {PROMO_CONFIG['max_amount']} ⭐"
+            )
+            return
+        
+        if len(promo_codes) >= PROMO_CONFIG["max_active_promos"]:
+            await update.message.reply_text(
+                f"❌ Достигнут лимит активных промокодов: {PROMO_CONFIG['max_active_promos']}"
+            )
+            return
+        
+        promo_code = create_promo_code(amount, uses, user_id)
+        
+        await update.message.reply_text(
+            f"✅ Промокод создан!\n\n"
+            f"🎟️ Код: {promo_code}\n"
+            f"💰 Сумма: {amount} ⭐\n"
+            f"📊 Использований: {uses}\n"
+            f"👤 Создал: {user_id}"
+        )
+        
+    except ValueError:
+        await update.message.reply_text("❌ Пожалуйста, введите корректные числа")
+
+async def promo_list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if not promo_codes:
+        await update.message.reply_text("📭 Активных промокодов нет")
+        return
+    
+    promo_list = "🎟️ СПИСОК АКТИВНЫХ ПРОМОКОДОВ:\n\n"
+    
+    for code, data in list(promo_codes.items())[:20]:  # Показываем первые 20
+        promo_list += (
+            f"🎟️ {code}\n"
+            f"💰 {data['amount']} ⭐ | 📊 {data['uses_left']}/{data['uses_left'] + len(data['used_by'])} использований\n"
+            f"👤 Создал: {data['created_by']} | 📅 {data['created_at'][:10]}\n"
+            f"────────────────────\n"
+        )
+    
+    if len(promo_codes) > 20:
+        promo_list += f"\n... и еще {len(promo_codes) - 20} промокодов"
+    
+    await update.message.reply_text(promo_list)
+
+async def promo_delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if len(context.args) != 1:
+        await update.message.reply_text(
+            "🎟️ Удаление промокода\n\n"
+            "Использование: /promo_delete <код>\n\n"
+            "Пример: /promo_delete ABC123"
+        )
+        return
+    
+    code = context.args[0].upper()
+    
+    if code not in promo_codes:
+        await update.message.reply_text("❌ Промокод не найден")
+        return
+    
+    del promo_codes[code]
+    save_data()
+    
+    await update.message.reply_text(f"✅ Промокод {code} удален")
+
+async def promo_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if len(context.args) != 1:
+        await update.message.reply_text(
+            "🎟️ Информация о промокоде\n\n"
+            "Использование: /promo_info <код>\n\n"
+            "Пример: /promo_info ABC123"
+        )
+        return
+    
+    code = context.args[0].upper()
+    
+    if code not in promo_codes:
+        await update.message.reply_text("❌ Промокод не найден")
+        return
+    
+    promo = promo_codes[code]
+    total_uses = promo['uses_left'] + len(promo['used_by'])
+    
+    info_text = (
+        f"🎟️ ИНФОРМАЦИЯ О ПРОМОКОДЕ {code}\n\n"
+        f"💰 Сумма: {promo['amount']} ⭐\n"
+        f"📊 Использований: {total_uses - promo['uses_left']}/{total_uses}\n"
+        f"👤 Создал: {promo['created_by']}\n"
+        f"📅 Создан: {promo['created_at'][:16]}\n"
+    )
+    
+    if promo['used_by']:
+        info_text += f"\n👥 Использовали: {', '.join(map(str, promo['used_by'][:10]))}"
+        if len(promo['used_by']) > 10:
+            info_text += f" ... и еще {len(promo['used_by']) - 10}"
+    
+    await update.message.reply_text(info_text)
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1380,6 +1754,9 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🔥 Макс. серии побед: {total_win_streaks}
 🎉 Мега-выигрышей: {total_mega_wins}
 💫 Сумма мега-выигрышей: {total_mega_amount} ⭐
+
+🎟️ ПРОМОКОДЫ:
+Активных: {len(promo_codes)}
 
 ⚡ БЫСТРЫЙ ДОСТУП:
     """
@@ -1603,6 +1980,7 @@ async def admin_broadcast_callback(update: Update, context: ContextTypes.DEFAULT
 • Случайные мега-выигрыши x1.5-x5 с шансом 0.6%
 • Возвраты 2-10% при проигрыше
 • Недельные награды 1-3% от суммы ставок
+• Реферальная система - 10% от проигрышей друзей
 
 ⚠️ ВНИМАНИЕ: 
 • Рассылка может занять несколько минут
@@ -1731,6 +2109,7 @@ async def admin_system_callback(update: Update, context: ContextTypes.DEFAULT_TY
 • Бонусы за серии: {len(WIN_STREAK_BONUSES)} уровней
 • Возвраты при проигрыше: {REFUND_CONFIG['min_refund']*100}%-{REFUND_CONFIG['max_refund']*100}%
 • Недельные награды: {WEEKLY_BONUS_CONFIG['base_percent']*100}% базовых + до {WEEKLY_BONUS_CONFIG['max_extra_bonus']*100}% дополнительных
+• Реферальная система: {REFERRAL_CONFIG['reward_percent']*100}% от проигрышей друзей
         """
         
         keyboard = [
@@ -1762,13 +2141,13 @@ async def admin_promo_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 Доступные команды:
 
-/promo create <код> <сумма> <использований> - Создать промокод
-/promo delete <код> - Удалить промокод
-/promo list - Список промокодов
-/promo stats <код> - Статистика промокода
+/promo_create <сумма> <использований> - Создать промокод
+/promo_list - Список промокодов
+/promo_delete <код> - Удалить промокод
+/promo_info <код> - Статистика промокода
 
 Пример:
-/promo create SUMMER2024 100 50
+/promo_create 100 50
 - Создаст промокод на 100 ⭐ с 50 использованиями
     """
     
@@ -1834,14 +2213,14 @@ async def admin_backup_callback(update: Update, context: ContextTypes.DEFAULT_TY
 • Пользователей: {len(user_data)}
 • Игр: {sum(data['total_games'] for data in user_data.values())}
 • Общий баланс: {sum(round(data['game_balance'], 1) for data in user_data.values())} ⭐
-• Серии побед: {sum(data['max_win_streak'] for data in user_data.values())}
-• Мега-выигрыши: {sum(data['mega_wins_count'] for data in user_data.values())}
+• Сессий: {len(user_sessions)}
+• Промокодов: {len(promo_codes)}
 
-Для восстановления из резервной копии используйте команду /restore
+💡 Для восстановления из резервной копии перезапустите бота.
     """
     
     keyboard = [
-        [InlineKeyboardButton("📥 Скачать backup", callback_data="admin_download_backup")],
+        [InlineKeyboardButton("🔄 Создать новую копию", callback_data="admin_backup")],
         [InlineKeyboardButton("🔙 Назад в админку", callback_data="admin_back")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1858,54 +2237,26 @@ async def admin_withdrawals_callback(update: Update, context: ContextTypes.DEFAU
         return
     
     if not withdrawal_requests:
-        await query.edit_message_text("📭 Заявок на вывод нет")
-        return
+        withdrawals_text = "💸 Нет заявок на вывод средств"
+    else:
+        withdrawals_text = "💸 ЗАЯВКИ НА ВЫВОД СРЕДСТВ:\n\n"
+        
+        for uid, requests in list(withdrawal_requests.items())[:20]:
+            user_requests = requests[-5:]  # Последние 5 заявок
+            withdrawals_text += f"👤 Пользователь {uid}:\n"
+            
+            for req in user_requests:
+                withdrawals_text += f"  • {req['amount']} ⭐ - {req['timestamp'][:16]} - {req['status']}\n"
+            withdrawals_text += "\n"
     
-    total_withdrawals = 0
-    withdrawals_text = "📋 Список заявок на вывод:\n\n"
-    
-    for uid, requests in withdrawal_requests.items():
-        for req in requests:
-            total_withdrawals += req['amount']
-            withdrawals_text += f"👤 User: {uid}\n"
-            withdrawals_text += f"💸 Сумма: {req['amount']} ⭐\n"
-            withdrawals_text += f"🎁 Подарков: {req['gifts_count']}\n"
-            withdrawals_text += f"⏰ Время: {req['timestamp'][:16]}\n"
-            withdrawals_text += f"📊 Статус: {req['status']}\n"
-            withdrawals_text += "─" * 30 + "\n"
-    
-    withdrawals_text += f"\n💰 Всего выведено: {total_withdrawals} ⭐"
-    
-    keyboard = [[InlineKeyboardButton("🔙 Назад в админку", callback_data="admin_back")]]
+    keyboard = [
+        [InlineKeyboardButton("🔙 Назад в админку", callback_data="admin_back")]
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(withdrawals_text, reply_markup=reply_markup)
 
-# 📥 СКАЧИВАНИЕ БЭКАПА
-async def admin_download_backup_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    user_id = query.from_user.id
-    if not admin_mode.get(user_id, False):
-        return
-    
-    backup_filename = f"backup_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json"
-    
-    try:
-        with open('data.json', 'rb') as file:
-            await context.bot.send_document(
-                chat_id=query.message.chat_id,
-                document=file,
-                filename=backup_filename,
-                caption=f"📊 Backup данных бота\n🕐 {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-            )
-        
-        await query.message.reply_text("✅ Backup успешно отправлен!")
-    except Exception as e:
-        await query.message.reply_text(f"❌ Ошибка при создании backup: {e}")
-
-# 🎮 АДМИНСКИЕ ИГРЫ
+# 🎮 ТЕСТИРОВАНИЕ ИГР
 async def admin_play_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1914,23 +2265,38 @@ async def admin_play_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not admin_mode.get(user_id, False):
         return
     
-    games_text = "👑 АДМИН - БЕСПЛАТНЫЕ ИГРЫ\n\n🎮 Выберите игру:"
+    play_text = """
+🎮 ТЕСТИРОВАНИЕ ИГР
+
+Вы находитесь в режиме администратора.
+Теперь вы можете играть без списания средств!
+
+Просто отправьте любой dice эмодзи игры в чат:
+🎰 - Слоты
+🎯 - Дартс
+🎲 - Кубик
+🎳 - Боулинг
+⚽ - Футбол
+🏀 - Баскетбол
+
+Все системы бонусов работают:
+• Серии побед
+• Мега-выигрыши
+• Возвраты
+• Недельные награды
+
+⚠️ Внимание: в админ-режиме баланс не списывается и не начисляется!
+    """
     
     keyboard = [
-        [InlineKeyboardButton("🎰 Слоты (БЕСПЛАТНО)", callback_data="admin_play_slots")],
-        [InlineKeyboardButton("🎰 Слоты 777 (БЕСПЛАТНО)", callback_data="admin_play_slots777")],
-        [InlineKeyboardButton("🎯 Дартс (БЕСПЛАТНО)", callback_data="admin_play_dart")],
-        [InlineKeyboardButton("🎲 Кубик (БЕСПЛАТНО)", callback_data="admin_play_dice")],
-        [InlineKeyboardButton("🎳 Боулинг (БЕСПЛАТНО)", callback_data="admin_play_bowling")],
-        [InlineKeyboardButton("⚽ Футбол (БЕСПЛАТНО)", callback_data="admin_play_football")],
-        [InlineKeyboardButton("🏀 Баскетбол (БЕСПЛАТНО)", callback_data="admin_play_basketball")],
+        [InlineKeyboardButton("🎮 Перейти к играм", callback_data="play_games")],
         [InlineKeyboardButton("🔙 Назад в админку", callback_data="admin_back")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.edit_message_text(games_text, reply_markup=reply_markup)
+    await query.edit_message_text(play_text, reply_markup=reply_markup)
 
-# ⚙️ АДМИНСКИЕ НАСТРОЙКИ
+# ⚙️ НАСТРОЙКИ
 async def admin_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1939,39 +2305,38 @@ async def admin_settings_callback(update: Update, context: ContextTypes.DEFAULT_
     if not admin_mode.get(user_id, False):
         return
     
-    settings_text = f"""
-⚙️ НАСТРОЙКИ СИСТЕМ БОНУСОВ
+    settings_text = """
+⚙️ НАСТРОЙКИ БОТА
 
 Текущие настройки:
 
-🎰 СЕРИИ ПОБЕД (применяются ко всем играм):
-• 2 победы: x{WIN_STREAK_BONUSES[2]['multiplier']}
-• 3 победы: x{WIN_STREAK_BONUSES[3]['multiplier']}  
-• 5 побед: x{WIN_STREAK_BONUSES[5]['multiplier']}
+🎰 ИГРЫ:
+• Минимальная ставка: 1 ⭐
+• Максимальная ставка: 100,000 ⭐
+• Время анимации: 1.5-3.5 секунд
 
-🎉 МЕГА-ВЫИГРЫШИ:
-• Шанс: {MEGA_WIN_CONFIG['chance']*100}%
-• Множитель: {MEGA_WIN_CONFIG['min_multiplier']}-{MEGA_WIN_CONFIG['max_multiplier']}x
+🎰 СИСТЕМЫ БОНУСОВ:
+• Шанс мега-выигрыша: 0.6%
+• Множитель мега-выигрыша: 1.5-5x
+• Бонусы за серии: +10%/+25%/+50%
+• Возвраты при проигрыше: 2-10%
+• Недельные награды: 1-3% от суммы ставок
+• Реферальная система: 10% от проигрышей друзей
 
-🔄 ВОЗВРАТЫ ПРИ ПРОИГРЫШЕ:
-• Минимальный возврат: {REFUND_CONFIG['min_refund']*100}%
-• Максимальный возврат: {REFUND_CONFIG['max_refund']*100}%
+💰 ФИНАНСЫ:
+• Минимальный вывод: 15 ⭐
+• Пакеты пополнения: 5-1000 ⭐
+• Курс: 1 реальная звезда = 1 ⭐
 
-🏆 НЕДЕЛЬНЫЕ НАГРАДЫ:
-• Минимальное количество игр в день: {WEEKLY_BONUS_CONFIG['min_daily_games']}
-• Требуемое количество дней: {WEEKLY_BONUS_CONFIG['required_days']}
-• Базовый процент: {WEEKLY_BONUS_CONFIG['base_percent']*100}%
-• Бонус за дополнительную игру: {WEEKLY_BONUS_CONFIG['bonus_per_extra_game']*100}%
-• Максимальный дополнительный бонус: {WEEKLY_BONUS_CONFIG['max_extra_bonus']*100}%
-
-⚽ ФУТБОЛ:
-• 2 возврата + 3 гола с выигрышем
-
-🏀 БАСКЕТБОЛ:
-• 3 возврата + 2 броска с выигрышем
+🎟️ ПРОМОКОДЫ:
+• Макс. активных: 50
+• Минимальная сумма: 5 ⭐
+• Максимальная сумма: 1000 ⭐
     """
     
-    keyboard = [[InlineKeyboardButton("🔙 Назад в админку", callback_data="admin_back")]]
+    keyboard = [
+        [InlineKeyboardButton("🔙 Назад в админку", callback_data="admin_back")]
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(settings_text, reply_markup=reply_markup)
@@ -1983,663 +2348,635 @@ async def admin_exit_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     user_id = query.from_user.id
     admin_mode[user_id] = False
-    await query.edit_message_text("👑 Режим админа деактивирован")
+    save_data()
+    
+    await query.edit_message_text(
+        "✅ Режим администратора деактивирован!\n\n"
+        "Теперь вы снова обычный пользователь.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("📊 Профиль", callback_data="back_to_profile")]
+        ])
+    )
 
-# 🆕 НОВЫЕ АДМИН КОМАНДЫ
+# 🔙 НАЗАД В АДМИНКУ
+async def admin_back_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await admin_panel(update, context)
+
+# 📊 КОМАНДА СТАТИСТИКИ
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    
     if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
         return
     
-    await admin_stats_callback(update, context)
+    total_users = len(user_data)
+    total_games = sum(data['total_games'] for data in user_data.values())
+    total_wins = sum(data['total_wins'] for data in user_data.values())
+    total_balance = sum(round(data['game_balance'], 1) for data in user_data.values())
+    total_deposited = sum(data['total_deposited'] for data in user_data.values())
+    
+    win_rate = (total_wins / total_games * 100) if total_games > 0 else 0
+    
+    stats_text = f"""
+📊 СТАТИСТИКА БОТА
 
+👥 Пользователи: {total_users}
+🎮 Всего игр: {total_games}
+🏆 Побед: {total_wins}
+📈 Винрейт: {win_rate:.1f}%
+
+💰 Финансы:
+💎 Общий баланс: {total_balance} ⭐
+💳 Пополнено: {total_deposited} ⭐
+    """
+    
+    await update.message.reply_text(stats_text)
+
+# 👥 КОМАНДА СПИСКА ПОЛЬЗОВАТЕЛЕЙ
 async def users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    
     if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
         return
     
-    await admin_users_callback(update, context)
+    page = 0
+    if context.args:
+        try:
+            page = int(context.args[0]) - 1
+            page = max(0, page)
+        except ValueError:
+            pass
+    
+    users_per_page = 10
+    all_users = list(user_data.items())
+    total_pages = (len(all_users) + users_per_page - 1) // users_per_page
+    
+    start_idx = page * users_per_page
+    end_idx = start_idx + users_per_page
+    page_users = all_users[start_idx:end_idx]
+    
+    users_text = f"👥 ПОЛЬЗОВАТЕЛИ (Страница {page + 1}/{total_pages})\n\n"
+    
+    for i, (uid, data) in enumerate(page_users, start_idx + 1):
+        win_rate = (data['total_wins'] / data['total_games'] * 100) if data['total_games'] > 0 else 0
+        users_text += f"{i}. ID: {uid}\n"
+        users_text += f"   💰: {round(data['game_balance'], 1)} ⭐ | 🎮: {data['total_games']} | 📈: {win_rate:.1f}%\n"
+        users_text += f"   🔥: {data['win_streak']} | 🎉: {data['mega_wins_count']} | 💳: {data['total_deposited']} ⭐\n\n"
+    
+    if page > 0:
+        users_text += f"\n⬅️ /users {page} - Предыдущая страница"
+    if page < total_pages - 1:
+        users_text += f"\n➡️ /users {page + 2} - Следующая страница"
+    
+    await update.message.reply_text(users_text)
 
+# 🏆 КОМАНДА ТОП ИГРОКОВ
 async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    
     if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
         return
     
-    await admin_top_callback(update, context)
+    category = context.args[0] if context.args else 'balance'
+    
+    if category == 'balance':
+        top_users = sorted(user_data.items(), key=lambda x: x[1]['game_balance'], reverse=True)[:10]
+        title = "💰 ПО БАЛАНСУ"
+    elif category == 'games':
+        top_users = sorted(user_data.items(), key=lambda x: x[1]['total_games'], reverse=True)[:10]
+        title = "🎮 ПО КОЛИЧЕСТВУ ИГР"
+    elif category == 'wins':
+        top_users = sorted(user_data.items(), key=lambda x: x[1]['total_wins'], reverse=True)[:10]
+        title = "🏆 ПО ПОБЕДАМ"
+    elif category == 'streak':
+        top_users = sorted(user_data.items(), key=lambda x: x[1]['max_win_streak'], reverse=True)[:10]
+        title = "🔥 ПО СЕРИЯМ ПОБЕД"
+    elif category == 'mega':
+        top_users = sorted(user_data.items(), key=lambda x: x[1]['mega_wins_count'], reverse=True)[:10]
+        title = "🎉 ПО МЕГА-ВЫИГРЫШАМ"
+    else:
+        top_users = sorted(user_data.items(), key=lambda x: x[1]['game_balance'], reverse=True)[:10]
+        title = "💰 ПО БАЛАНСУ"
+    
+    top_text = f"🏆 {title}\n\n"
+    
+    for i, (uid, data) in enumerate(top_users, 1):
+        if category == 'balance':
+            top_text += f"{i}. ID: {uid} - {round(data['game_balance'], 1)} ⭐\n"
+        elif category == 'games':
+            top_text += f"{i}. ID: {uid} - {data['total_games']} игр\n"
+        elif category == 'wins':
+            win_rate = (data['total_wins'] / data['total_games'] * 100) if data['total_games'] > 0 else 0
+            top_text += f"{i}. ID: {uid} - {data['total_wins']} побед ({win_rate:.1f}%)\n"
+        elif category == 'streak':
+            top_text += f"{i}. ID: {uid} - {data['max_win_streak']} побед подряд\n"
+        elif category == 'mega':
+            top_text += f"{i}. ID: {uid} - {data['mega_wins_count']} мега-выигрышей\n"
+    
+    top_text += "\n📊 Категории: /top balance, /top games, /top wins, /top streak, /top mega"
+    
+    await update.message.reply_text(top_text)
 
-# 👑 АДМИН КОМАНДА ДЛЯ ПОПОЛНЕНИЯ БАЛАНСА
-async def add_balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# 💰 КОМАНДЫ УПРАВЛЕНИЯ БАЛАНСАМИ
+async def addbalance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
         return
     
     if len(context.args) != 2:
-        await update.message.reply_text("""
-💰 Пополнение баланса пользователя
-
-Использование: /addbalance <user_id> <amount>
-
-Примеры:
-/addbalance 123456789 1000 - пополнить баланс на 1000 ⭐
-/addbalance 123456789 500 - пополнить баланс на 500 ⭐
-        """)
+        await update.message.reply_text("Использование: /addbalance <user_id> <amount>")
         return
     
     try:
-        target_user_id = int(context.args[0])
-        amount = int(context.args[1])
+        target_id = int(context.args[0])
+        amount = float(context.args[1])
+        
+        if target_id not in user_data:
+            await update.message.reply_text("❌ Пользователь не найден!")
+            return
+        
+        user_data[target_id]['game_balance'] += amount
+        save_data()
+        
+        await update.message.reply_text(
+            f"✅ Баланс пользователя {target_id} пополнен на {amount} ⭐\n"
+            f"💰 Новый баланс: {round(user_data[target_id]['game_balance'], 1)} ⭐"
+        )
+        
     except ValueError:
-        await update.message.reply_text("❌ Ошибка: user_id и amount должны быть числами")
-        return
-    
-    if target_user_id not in user_data:
-        await update.message.reply_text("❌ Пользователь не найден")
-        return
-    
-    user_data[target_user_id]['game_balance'] += amount
-    user_data[target_user_id]['total_deposited'] += amount
-    
-    save_data()
-    
-    await update.message.reply_text(
-        f"✅ Баланс пользователя {target_user_id} пополнен на {amount} ⭐\n"
-        f"💰 Новый баланс: {round(user_data[target_user_id]['game_balance'], 1)} ⭐"
-    )
+        await update.message.reply_text("❌ Неверный формат чисел!")
 
-async def set_balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def setbalance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
         return
     
     if len(context.args) != 2:
-        await update.message.reply_text("""
-💳 Установка баланса пользователя
-
-Использование: /setbalance <user_id> <amount>
-
-Примеры:
-/setbalance 123456789 5000 - установить баланс 5000 ⭐
-/setbalance 123456789 0 - обнулить баланс
-        """)
+        await update.message.reply_text("Использование: /setbalance <user_id> <amount>")
         return
     
     try:
-        target_user_id = int(context.args[0])
-        amount = int(context.args[1])
+        target_id = int(context.args[0])
+        amount = float(context.args[1])
+        
+        if target_id not in user_data:
+            await update.message.reply_text("❌ Пользователь не найден!")
+            return
+        
+        user_data[target_id]['game_balance'] = amount
+        save_data()
+        
+        await update.message.reply_text(
+            f"✅ Баланс пользователя {target_id} установлен на {amount} ⭐"
+        )
+        
     except ValueError:
-        await update.message.reply_text("❌ Ошибка: user_id и amount должны быть числами")
-        return
-    
-    if target_user_id not in user_data:
-        await update.message.reply_text("❌ Пользователь не найден")
-        return
-    
-    old_balance = round(user_data[target_user_id]['game_balance'], 1)
-    user_data[target_user_id]['game_balance'] = amount
-    
-    save_data()
-    
-    await update.message.reply_text(
-        f"✅ Баланс пользователя {target_user_id} изменен\n"
-        f"💰 Было: {old_balance} ⭐\n"
-        f"💰 Стало: {amount} ⭐"
-    )
+        await update.message.reply_text("❌ Неверный формат чисел!")
 
-async def reset_balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def resetbalance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
         return
     
     if len(context.args) != 1:
-        await update.message.reply_text("""
-🔄 Сброс баланса пользователя
-
-Использование: /resetbalance <user_id>
-
-Пример:
-/resetbalance 123456789 - сбросить баланс пользователя до 0
-        """)
+        await update.message.reply_text("Использование: /resetbalance <user_id>")
         return
     
     try:
-        target_user_id = int(context.args[0])
+        target_id = int(context.args[0])
+        
+        if target_id not in user_data:
+            await update.message.reply_text("❌ Пользователь не найден!")
+            return
+        
+        user_data[target_id]['game_balance'] = 0
+        save_data()
+        
+        await update.message.reply_text(
+            f"✅ Баланс пользователя {target_id} сброшен до 0 ⭐"
+        )
+        
     except ValueError:
-        await update.message.reply_text("❌ Ошибка: user_id должен быть числом")
-        return
-    
-    if target_user_id not in user_data:
-        await update.message.reply_text("❌ Пользователь не найден")
-        return
-    
-    old_balance = round(user_data[target_user_id]['game_balance'], 1)
-    user_data[target_user_id]['game_balance'] = 0
-    
-    save_data()
-    
-    await update.message.reply_text(
-        f"✅ Баланс пользователя {target_user_id} сброшен\n"
-        f"💰 Было: {old_balance} ⭐\n"
-        f"💰 Стало: 0 ⭐"
-    )
+        await update.message.reply_text("❌ Неверный формат ID!")
 
-async def search_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# 🔍 КОМАНДЫ ПОИСКА
+async def searchid_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
         return
     
     if len(context.args) != 1:
-        await update.message.reply_text("""
-🔍 Поиск пользователя по ID
-
-Использование: /searchid <user_id>
-
-Пример:
-/searchid 123456789 - найти пользователя с ID 123456789
-        """)
+        await update.message.reply_text("Использование: /searchid <user_id>")
         return
     
     try:
-        target_user_id = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("❌ Ошибка: user_id должен быть числом")
-        return
-    
-    if target_user_id not in user_data:
-        await update.message.reply_text("❌ Пользователь не найден")
-        return
-    
-    data = user_data[target_user_id]
-    win_rate = (data['total_wins'] / data['total_games'] * 100) if data['total_games'] > 0 else 0
-    
-    user_info = f"""
-📋 Информация о пользователе
+        target_id = int(context.args[0])
+        
+        if target_id not in user_data:
+            await update.message.reply_text("❌ Пользователь не найден!")
+            return
+        
+        data = user_data[target_id]
+        win_rate = (data['total_wins'] / data['total_games'] * 100) if data['total_games'] > 0 else 0
+        
+        user_info = f"""
+🔍 ИНФОРМАЦИЯ О ПОЛЬЗОВАТЕЛЕ {target_id}
 
-🆔 ID: {target_user_id}
-📅 Регистрация: {data['registration_date'][:10]}
-⏰ Последняя активность: {data['last_activity'][:16]}
-
-💎 Статистика:
-💰 Баланс: {round(data['game_balance'], 1)} ⭐
+💎 Баланс: {round(data['game_balance'], 1)} ⭐
 🎯 Текущая ставка: {data['current_bet']} ⭐
 🎮 Всего игр: {data['total_games']}
 🏆 Побед: {data['total_wins']}
 📈 Винрейт: {win_rate:.1f}%
 💳 Пополнено: {data['total_deposited']} ⭐
-💵 Потрачено реальных: {data['real_money_spent']} Stars
-
-🎰 Системы бонусов:
-🔥 Текущая серия: {data['win_streak']} побед
-🏆 Максимальная серия: {data['max_win_streak']} побед
+🔥 Текущая серия: {data['win_streak']}
+🏆 Макс. серия: {data['max_win_streak']}
 🎉 Мега-выигрышей: {data['mega_wins_count']}
 💫 Сумма мега-выигрышей: {round(data['total_mega_win_amount'], 1)} ⭐
-    """
-    
-    await update.message.reply_text(user_info)
+📅 Регистрация: {data['registration_date'][:10]}
+🕐 Последняя активность: {data['last_activity'][:16]}
+        """
+        
+        await update.message.reply_text(user_info)
+        
+    except ValueError:
+        await update.message.reply_text("❌ Неверный формат ID!")
 
-# 🔍 НОВЫЕ КОМАНДЫ ПОИСКА
-async def search_streak_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def searchstreak_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
         return
     
     if len(context.args) != 1:
-        await update.message.reply_text("""
-🔍 Поиск по сериям побед
-
-Использование: /searchstreak <минимальная_серия>
-
-Пример:
-/searchstreak 5 - найти пользователей с серией от 5 побед
-        """)
+        await update.message.reply_text("Использование: /searchstreak <min_streak>")
         return
     
     try:
         min_streak = int(context.args[0])
+        
+        found_users = []
+        for uid, data in user_data.items():
+            if data['max_win_streak'] >= min_streak:
+                found_users.append((uid, data))
+        
+        if not found_users:
+            await update.message.reply_text(f"❌ Пользователи с серией побед ≥ {min_streak} не найдены!")
+            return
+        
+        found_users.sort(key=lambda x: x[1]['max_win_streak'], reverse=True)
+        
+        result_text = f"🔍 ПОЛЬЗОВАТЕЛИ С СЕРИЕЙ ПОБЕД ≥ {min_streak}:\n\n"
+        
+        for i, (uid, data) in enumerate(found_users[:10], 1):
+            result_text += f"{i}. ID: {uid} - {data['max_win_streak']} побед подряд\n"
+        
+        if len(found_users) > 10:
+            result_text += f"\n... и еще {len(found_users) - 10} пользователей"
+        
+        await update.message.reply_text(result_text)
+        
     except ValueError:
-        await update.message.reply_text("❌ Ошибка: серия должна быть числом")
-        return
-    
-    found_users = []
-    for uid, data in user_data.items():
-        if data['max_win_streak'] >= min_streak:
-            found_users.append((uid, data))
-    
-    if not found_users:
-        await update.message.reply_text(f"❌ Пользователи с серией от {min_streak} побед не найдены")
-        return
-    
-    result_text = f"👥 Пользователи с серией от {min_streak} побед:\n\n"
-    for i, (uid, data) in enumerate(found_users[:20], 1):
-        result_text += f"{i}. ID: {uid} | Серия: {data['max_win_streak']} | Баланс: {round(data['game_balance'], 1)} ⭐\n"
-    
-    if len(found_users) > 20:
-        result_text += f"\n... и еще {len(found_users) - 20} пользователей"
-    
-    await update.message.reply_text(result_text)
+        await update.message.reply_text("❌ Неверный формат числа!")
 
-async def search_mega_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def searchmega_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
         return
     
     if len(context.args) != 1:
-        await update.message.reply_text("""
-🔍 Поиск по мега-выигрышам
-
-Использование: /searchmega <минимальное_количество>
-
-Пример:
-/searchmega 3 - найти пользователей с 3+ мега-выигрышами
-        """)
+        await update.message.reply_text("Использование: /searchmega <min_mega>")
         return
     
     try:
         min_mega = int(context.args[0])
+        
+        found_users = []
+        for uid, data in user_data.items():
+            if data['mega_wins_count'] >= min_mega:
+                found_users.append((uid, data))
+        
+        if not found_users:
+            await update.message.reply_text(f"❌ Пользователи с мега-выигрышами ≥ {min_mega} не найдены!")
+            return
+        
+        found_users.sort(key=lambda x: x[1]['mega_wins_count'], reverse=True)
+        
+        result_text = f"🔍 ПОЛЬЗОВАТЕЛИ С МЕГА-ВЫИГРЫШАМИ ≥ {min_mega}:\n\n"
+        
+        for i, (uid, data) in enumerate(found_users[:10], 1):
+            result_text += f"{i}. ID: {uid} - {data['mega_wins_count']} мега-выигрышей\n"
+        
+        if len(found_users) > 10:
+            result_text += f"\n... и еще {len(found_users) - 10} пользователей"
+        
+        await update.message.reply_text(result_text)
+        
     except ValueError:
-        await update.message.reply_text("❌ Ошибка: количество должно быть числом")
-        return
-    
-    found_users = []
-    for uid, data in user_data.items():
-        if data['mega_wins_count'] >= min_mega:
-            found_users.append((uid, data))
-    
-    if not found_users:
-        await update.message.reply_text(f"❌ Пользователи с {min_mega}+ мега-выигрышами не найдены")
-        return
-    
-    result_text = f"👥 Пользователи с {min_mega}+ мега-выигрышами:\n\n"
-    for i, (uid, data) in enumerate(found_users[:20], 1):
-        result_text += f"{i}. ID: {uid} | Мега-выигрыши: {data['mega_wins_count']} | Сумма: {round(data['total_mega_win_amount'], 1)} ⭐\n"
-    
-    if len(found_users) > 20:
-        result_text += f"\n... и еще {len(found_users) - 20} пользователей"
-    
-    await update.message.reply_text(result_text)
+        await update.message.reply_text("❌ Неверный формат числа!")
 
-async def reset_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# 🔄 КОМАНДА СБРОСА ПОЛЬЗОВАТЕЛЯ
+async def resetuser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
         return
     
     if len(context.args) != 1:
-        await update.message.reply_text("""
-🔄 Полный сброс пользователя
-
-Использование: /resetuser <user_id>
-
-ВНИМАНИЕ: Эта команда полностью сбрасывает все данные пользователя!
-
-Пример:
-/resetuser 123456789 - полный сброс пользователя
-        """)
+        await update.message.reply_text("Использование: /resetuser <user_id>")
         return
     
     try:
-        target_user_id = int(context.args[0])
+        target_id = int(context.args[0])
+        
+        if target_id not in user_data:
+            await update.message.reply_text("❌ Пользователь не найден!")
+            return
+        
+        user_data[target_id] = {
+            'game_balance': 0.0,
+            'total_games': 0,
+            'total_wins': 0,
+            'total_deposited': 0,
+            'real_money_spent': 0,
+            'current_bet': 5,
+            'registration_date': datetime.datetime.now().isoformat(),
+            'last_activity': datetime.datetime.now().isoformat(),
+            'slots_mode': 'normal',
+            'win_streak': 0,
+            'max_win_streak': 0,
+            'mega_wins_count': 0,
+            'total_mega_win_amount': 0.0,
+            'referral_code': user_data[target_id].get('referral_code'),
+            'referral_by': user_data[target_id].get('referral_by'),
+            'referrals_count': user_data[target_id].get('referrals_count', 0),
+            'referral_earnings': user_data[target_id].get('referral_earnings', 0.0),
+            'used_promo_codes': []
+        }
+        
+        save_data()
+        
+        await update.message.reply_text(
+            f"✅ Пользователь {target_id} полностью сброшен!\n"
+            f"Все данные очищены, кроме реферальной информации."
+        )
+        
     except ValueError:
-        await update.message.reply_text("❌ Ошибка: user_id должен быть числом")
-        return
-    
-    if target_user_id not in user_data:
-        await update.message.reply_text("❌ Пользователь не найден")
-        return
-    
-    old_data = user_data[target_user_id].copy()
-    
-    user_data[target_user_id] = {
-        'game_balance': 0.0,
-        'total_games': 0,
-        'total_wins': 0,
-        'total_deposited': 0,
-        'real_money_spent': 0,
-        'current_bet': 5,
-        'registration_date': datetime.datetime.now().isoformat(),
-        'last_activity': datetime.datetime.now().isoformat(),
-        'slots_mode': 'normal',
-        'win_streak': 0,
-        'max_win_streak': 0,
-        'mega_wins_count': 0,
-        'total_mega_win_amount': 0.0
-    }
-    
-    save_data()
-    
-    await update.message.reply_text(
-        f"✅ Пользователь {target_user_id} полностью сброшен\n\n"
-        f"📊 Было:\n"
-        f"💰 Баланс: {round(old_data['game_balance'], 1)} ⭐\n"
-        f"🎮 Игр: {old_data['total_games']}\n"
-        f"🏆 Побед: {old_data['total_wins']}\n"
-        f"💳 Пополнено: {old_data['total_deposited']} ⭐\n"
-        f"🔥 Макс. серия: {old_data['max_win_streak']}\n"
-        f"🎉 Мега-выигрышей: {old_data['mega_wins_count']}"
-    )
+        await update.message.reply_text("❌ Неверный формат ID!")
 
+# 🚫 КОМАНДА БАНА
 async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
         return
     
     if len(context.args) < 2:
-        await update.message.reply_text("""
-🚫 Бан пользователя
-
-Использование: /ban <user_id> <причина>
-
-Примеры:
-/ban 123456789 Мошенничество
-/ban 123456789 Нарушение правил чата
-/ban 123456789 Спам
-        """)
+        await update.message.reply_text("Использование: /ban <user_id> <причина>")
         return
     
     try:
-        target_user_id = int(context.args[0])
+        target_id = int(context.args[0])
+        reason = ' '.join(context.args[1:])
+        
+        if target_id not in user_data:
+            await update.message.reply_text("❌ Пользователь не найден!")
+            return
+        
+        await update.message.reply_text(
+            f"🚫 Пользователь {target_id} забанен!\n"
+            f"📝 Причина: {reason}\n\n"
+            f"⚠️ ВНИМАНИЕ: Система бана еще не полностью реализована."
+        )
+        
     except ValueError:
-        await update.message.reply_text("❌ Ошибка: user_id должен быть числом")
-        return
-    
-    reason = ' '.join(context.args[1:])
-    
-    if target_user_id not in user_data:
-        await update.message.reply_text("❌ Пользователь не найден")
-        return
-    
-    await update.message.reply_text(
-        f"✅ Пользователь {target_user_id} забанен\n"
-        f"📝 Причина: {reason}\n\n"
-        f"💡 Для разбана используйте /unban {target_user_id}"
-    )
+        await update.message.reply_text("❌ Неверный формат ID!")
 
+# 💸 КОМАНДА ВЫВОДОВ
 async def withdrawals_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if not withdrawal_requests:
+        await update.message.reply_text("💸 Нет заявок на вывод средств")
+        return
+    
+    withdrawals_text = "💸 ВСЕ ЗАЯВКИ НА ВЫВОД:\n\n"
+    
+    for uid, requests in withdrawal_requests.items():
+        total_withdrawn = sum(req['amount'] for req in requests if req['status'] == 'completed')
+        withdrawals_text += f"👤 Пользователь {uid}:\n"
+        withdrawals_text += f"   💰 Всего вывел: {total_withdrawn} ⭐\n"
+        withdrawals_text += f"   📊 Заявок: {len(requests)}\n\n"
+    
+    await update.message.reply_text(withdrawals_text)
+
+# 📢 ОБРАБОТКА РАССЫЛКИ
+async def handle_broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if not admin_mode.get(user_id, False):
         return
     
-    if not withdrawal_requests:
-        await update.message.reply_text("📭 Заявок на вывод нет")
+    if not context.user_data.get('waiting_for_broadcast'):
         return
     
-    total_withdrawals = 0
-    withdrawals_text = "📋 Список заявок на вывод:\n\n"
-    
-    for uid, requests in withdrawal_requests.items():
-        for req in requests:
-            total_withdrawals += req['amount']
-            withdrawals_text += f"👤 User: {uid}\n"
-            withdrawals_text += f"💸 Сумма: {req['amount']} ⭐\n"
-            withdrawals_text += f"🎁 Подарков: {req['gifts_count']}\n"
-            withdrawals_text += f"⏰ Время: {req['timestamp'][:16]}\n"
-            withdrawals_text += f"📊 Статус: {req['status']}\n"
-            withdrawals_text += "─" * 30 + "\n"
-    
-    withdrawals_text += f"\n💰 Всего выведено: {total_withdrawals} ⭐"
-    
-    await update.message.reply_text(withdrawals_text)
-
-# 🔧 ОБРАБОТЧИК РАССЫЛКИ
-async def handle_broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    if not admin_mode.get(user_id, False) or not context.user_data.get('waiting_for_broadcast'):
-        return
-    
-    message_text = update.message.text
+    message = update.message
     context.user_data['waiting_for_broadcast'] = False
     
-    progress_msg = await update.message.reply_text("🔄 Начинаю рассылку...")
+    total_users = len(user_data)
+    successful = 0
+    failed = 0
     
-    success_count = 0
-    fail_count = 0
+    progress_message = await message.reply_text(
+        f"📢 Начинаю рассылку...\n"
+        f"👥 Получателей: {total_users}\n"
+        f"✅ Успешно: 0\n"
+        f"❌ Ошибок: 0"
+    )
     
-    for uid in user_data:
+    for user_id in user_data.keys():
         try:
-            await context.bot.send_message(
-                chat_id=uid,
-                text=f"📢 ОБЪЯВЛЕНИЕ ОТ АДМИНИСТРАЦИИ:\n\n{message_text}"
-            )
-            success_count += 1
-            await asyncio.sleep(0.1)
+            if message.text:
+                await context.bot.send_message(chat_id=user_id, text=message.text)
+            elif message.caption:
+                if message.photo:
+                    await context.bot.send_photo(
+                        chat_id=user_id,
+                        photo=message.photo[-1].file_id,
+                        caption=message.caption
+                    )
+                elif message.video:
+                    await context.bot.send_video(
+                        chat_id=user_id,
+                        video=message.video.file_id,
+                        caption=message.caption
+                    )
+            successful += 1
         except Exception as e:
-            fail_count += 1
-            print(f"Не удалось отправить сообщение пользователю {uid}: {e}")
+            print(f"Ошибка отправки пользователю {user_id}: {e}")
+            failed += 1
+        
+        if (successful + failed) % 10 == 0:
+            await progress_message.edit_text(
+                f"📢 Рассылка...\n"
+                f"👥 Получателей: {total_users}\n"
+                f"✅ Успешно: {successful}\n"
+                f"❌ Ошибок: {failed}\n"
+                f"📊 Прогресс: {((successful + failed) / total_users * 100):.1f}%"
+            )
+        
+        await asyncio.sleep(0.1)
     
-    await progress_msg.edit_text(
-        f"✅ Рассылка завершена!\n\n"
-        f"📊 Результаты:\n"
-        f"• Успешно: {success_count}\n"
-        f"• Не удалось: {fail_count}\n"
-        f"• Всего: {success_count + fail_count}"
+    await progress_message.edit_text(
+        f"✅ Рассылка завершена!\n"
+        f"👥 Всего получателей: {total_users}\n"
+        f"✅ Успешно: {successful}\n"
+        f"❌ Ошибок: {failed}\n"
+        f"📊 Успешных: {(successful/total_users*100):.1f}%"
     )
 
-# 🔄 ОБРАБОТЧИКИ КНОПОК АДМИНКИ
-async def handle_admin_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    callback_data = query.data
+# 💾 КОМАНДА РЕЗЕРВНОЙ КОПИИ
+async def admin_backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
     
-    if callback_data == 'admin_back':
-        await admin_panel(update, context)
-    elif callback_data == 'admin_stats':
-        await admin_stats_callback(update, context)
-    elif callback_data == 'admin_users':
-        await admin_users_callback(update, context)
-    elif callback_data == 'admin_top':
-        await admin_top_callback(update, context)
-    elif callback_data == 'admin_broadcast':
-        await admin_broadcast_callback(update, context)
-    elif callback_data == 'admin_balance':
-        await admin_balance_callback(update, context)
-    elif callback_data == 'admin_search':
-        await admin_search_callback(update, context)
-    elif callback_data == 'admin_system':
-        await admin_system_callback(update, context)
-    elif callback_data == 'admin_promo':
-        await admin_promo_callback(update, context)
-    elif callback_data == 'admin_ban':
-        await admin_ban_callback(update, context)
-    elif callback_data == 'admin_backup':
-        await admin_backup_callback(update, context)
-    elif callback_data == 'admin_withdrawals':
-        await admin_withdrawals_callback(update, context)
-    elif callback_data == 'admin_download_backup':
-        await admin_download_backup_callback(update, context)
-    elif callback_data == 'admin_play':
-        await admin_play_callback(update, context)
-    elif callback_data == 'admin_settings':
-        await admin_settings_callback(update, context)
-    elif callback_data == 'admin_exit':
-        await admin_exit_callback(update, context)
-    elif callback_data.startswith('admin_play_'):
-        await handle_game_selection(update, context)
-    elif callback_data.startswith('admin_users_'):
-        if 'prev' in callback_data:
-            page = int(callback_data.split('_')[-1]) - 1
-        else:
-            page = int(callback_data.split('_')[-1]) + 1
-        context.user_data['admin_users_page'] = page
-        await admin_users_callback(update, context)
-
-# 🆘 КОМАНДА ПОМОЩИ (ОБНОВЛЕННАЯ)
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    help_text = """
-🎰 *NSource Casino - Помощь*
-
-*🎁 ОПТИМИЗИРОВАННЫЕ СИСТЕМЫ:*
-• *🔥 Серии побед* - получайте бонусы +10%/+25%/+50% за несколько побед подряд (во всех играх)
-• *🎉 Случайные мега-выигрыши* - шанс 0.6% увеличить выигрыш в 1.5-5 раз!
-• *🔄 Возвраты 2-10%* - даже при проигрыше получайте часть ставки обратно!
-• *🏆 Недельные награды* - играйте 5+ раз в день 7 дней подряд для бонуса 1-3% от суммы ставок!
-
-*Основные команды:*
-/start - Начать работу с ботом
-/profile - Ваш профиль и статистика  
-/deposit - Пополнить баланс
-/withdraw - Вывести средства
-/activity - Ваша активность
-/bet [сумма] - Изменить ставку
-/help - Эта справка
-
-*Как играть:*
-1. Пополните баланс через /deposit
-2. Установите ставку через /bet
-3. Отправьте любой dice-эмодзи или используйте кнопки
-4. Выигрывайте и увеличивайте баланс!
-
-*Доступные игры:*
-🎰 Слоты - 64 комбинации, 4 выигрышных (5-20x ставки)
-🎰 Слоты 777 - только джекпот 777 (50x ставки)
-🎯 Дартс - Победа на 6 (3x ставки)
-🎲 Кубик - Победа на 6 (3x ставки)  
-🎳 Боулинг - Победа на 6 (3x ставки)
-⚽ Футбол - 2 возврата + 3 гола с выигрышем
-🏀 Баскетбол - 3 возврата + 2 броска с выигрышем
-
-*Вывод средств:*
-Минимальная сумма: 15 ⭐
-1 подарок за каждые 15 ⭐
-
-*Недельные награды:*
-• Играйте 5+ раз в день 7 дней подряд
-• Получайте 1% от суммы ставок + до 2% за дополнительные игры
-• Награда рассчитывается автоматически
-    """
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
     
-    await update.message.reply_text(help_text, parse_mode='Markdown')
+    save_data()
+    backup_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    await update.message.reply_text(
+        f"💾 Резервная копия создана!\n"
+        f"🕐 Время: {backup_time}\n"
+        f"👥 Пользователей: {len(user_data)}\n"
+        f"🎮 Игр: {sum(data['total_games'] for data in user_data.values())}\n"
+        f"💰 Баланс: {sum(round(data['game_balance'], 1) for data in user_data.values())} ⭐"
+    )
 
-# 🔧 ОБРАБОТЧИК CALLBACK QUERY
-async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    callback_data = query.data
-    
-    if callback_data == 'admin_panel':
-        await admin_panel_callback(update, context)
-    
-    elif callback_data.startswith('admin_'):
-        await handle_admin_callback_query(update, context)
-    
-    elif callback_data == 'withdraw':
-        await withdraw_callback(update, context)
-    elif callback_data.startswith('withdraw_'):
-        await handle_withdraw_selection(update, context)
-    elif callback_data == 'confirm_withdraw':
-        await confirm_withdraw(update, context)
-    
-    elif callback_data == 'play_games':
-        await play_games_callback(update, context)
-    elif callback_data.startswith('buy_'):
-        await handle_deposit_selection(update, context)
-    elif callback_data.startswith('play_'):
-        await handle_game_selection(update, context)
-    elif callback_data == 'deposit':
-        await deposit_callback(update, context)
-    elif callback_data == 'change_bet':
-        await change_bet_callback(update, context)
-    elif callback_data == 'back_to_profile':
-        await back_to_profile_callback(update, context)
-
-# 🌐 FLASK ДЛЯ RAILWAY
+# 🚀 WEBHOOK ДЛЯ RAILWAY
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "🎰 NSource Casino Bot - Полная игровая система с сериями побед, мега-выигрышами, возвратами и недельными наградами!"
+    return "🤖 NSource Casino Bot is running!"
 
 def run_flask():
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
-
-# 📝 УСТАНОВКА ПОДСКАЗОК КОМАНД
-async def set_bot_commands(application):
-    commands = [
-        ("start", "🚀 Запустить бота"),
-        ("profile", "📊 Личный кабинет"),
-        ("deposit", "💰 Пополнить баланс"),
-        ("withdraw", "💸 Вывести средства"),
-        ("activity", "📈 Моя активность"),
-        ("bet", "🎯 Изменить ставку"),
-        ("help", "🆘 Помощь по командам")
-    ]
-    
-    from telegram import BotCommand
-    await application.bot.set_my_commands(
-        [BotCommand(command, description) for command, description in commands]
-    )
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
 
 # 🚀 ЗАПУСК БОТА
 def main():
     load_data()
     
-    flask_thread = Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
-    
     application = Application.builder().token(BOT_TOKEN).build()
     
-    application.post_init = set_bot_commands
-    
-    # ОСНОВНЫЕ КОМАНДЫ
+    # 👤 ОСНОВНЫЕ КОМАНДЫ
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("profile", profile))
+    application.add_handler(CommandHandler("activity", activity_command))
+    application.add_handler(CommandHandler("promo", promo_command))
+    
+    # 🎮 ИГРОВЫЕ КОМАНДЫ
+    application.add_handler(CommandHandler("bet", bet_command))
     application.add_handler(CommandHandler("deposit", deposit_command))
     application.add_handler(CommandHandler("withdraw", withdraw_command))
-    application.add_handler(CommandHandler("activity", activity_command))
-    application.add_handler(CommandHandler("bet", bet_command))
-    application.add_handler(CommandHandler("help", help_command))
     
-    # АДМИН КОМАНДЫ
+    # 👑 АДМИН КОМАНДЫ
     application.add_handler(CommandHandler("admin", admin_command))
     application.add_handler(CommandHandler("admin_help", admin_help_command))
-    application.add_handler(CommandHandler("addbalance", add_balance_command))
-    application.add_handler(CommandHandler("setbalance", set_balance_command))
-    application.add_handler(CommandHandler("resetbalance", reset_balance_command))
-    application.add_handler(CommandHandler("searchid", search_id_command))
-    application.add_handler(CommandHandler("searchstreak", search_streak_command))
-    application.add_handler(CommandHandler("searchmega", search_mega_command))
-    application.add_handler(CommandHandler("resetuser", reset_user_command))
-    application.add_handler(CommandHandler("ban", ban_command))
-    application.add_handler(CommandHandler("withdrawals", withdrawals_command))
-    
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("users", users_command))
     application.add_handler(CommandHandler("top", top_command))
     
-    # CALLBACK'И
-    application.add_handler(CallbackQueryHandler(handle_callback_query))
+    # 💰 АДМИН КОМАНДЫ БАЛАНСОВ
+    application.add_handler(CommandHandler("addbalance", addbalance_command))
+    application.add_handler(CommandHandler("setbalance", setbalance_command))
+    application.add_handler(CommandHandler("resetbalance", resetbalance_command))
     
-    # ПЛАТЕЖИ
+    # 🔍 АДМИН КОМАНДЫ ПОИСКА
+    application.add_handler(CommandHandler("searchid", searchid_command))
+    application.add_handler(CommandHandler("searchstreak", searchstreak_command))
+    application.add_handler(CommandHandler("searchmega", searchmega_command))
+    
+    # 🔄 АДМИН КОМАНДЫ УПРАВЛЕНИЯ
+    application.add_handler(CommandHandler("resetuser", resetuser_command))
+    application.add_handler(CommandHandler("ban", ban_command))
+    application.add_handler(CommandHandler("withdrawals", withdrawals_command))
+    application.add_handler(CommandHandler("admin_backup", admin_backup_command))
+    
+    # 🎟️ АДМИН КОМАНДЫ ПРОМОКОДОВ
+    application.add_handler(CommandHandler("promo_create", promo_create_command))
+    application.add_handler(CommandHandler("promo_list", promo_list_command))
+    application.add_handler(CommandHandler("promo_delete", promo_delete_command))
+    application.add_handler(CommandHandler("promo_info", promo_info_command))
+    
+    # 💳 ОБРАБОТЧИКИ ПЛАТЕЖЕЙ
     application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
     
-    # СООБЩЕНИЯ
+    # 🎯 CALLBACK ОБРАБОТЧИКИ
+    application.add_handler(CallbackQueryHandler(play_games_callback, pattern="^play_games$"))
+    application.add_handler(CallbackQueryHandler(handle_game_selection, pattern="^play_"))
+    application.add_handler(CallbackQueryHandler(change_bet_callback, pattern="^change_bet$"))
+    application.add_handler(CallbackQueryHandler(back_to_profile_callback, pattern="^back_to_profile$"))
+    application.add_handler(CallbackQueryHandler(profile, pattern="^profile$"))
+    application.add_handler(CallbackQueryHandler(deposit_callback, pattern="^deposit$"))
+    application.add_handler(CallbackQueryHandler(handle_deposit_selection, pattern="^buy_"))
+    application.add_handler(CallbackQueryHandler(withdraw_callback, pattern="^withdraw$"))
+    application.add_handler(CallbackQueryHandler(handle_withdraw_selection, pattern="^withdraw_"))
+    application.add_handler(CallbackQueryHandler(confirm_withdraw, pattern="^confirm_withdraw$"))
+    application.add_handler(CallbackQueryHandler(referral_system_callback, pattern="^referral_system$"))
+    
+    # 👑 АДМИН CALLBACK ОБРАБОТЧИКИ
+    application.add_handler(CallbackQueryHandler(admin_panel_callback, pattern="^admin_panel$"))
+    application.add_handler(CallbackQueryHandler(admin_stats_callback, pattern="^admin_stats$"))
+    application.add_handler(CallbackQueryHandler(admin_users_callback, pattern="^admin_users$"))
+    application.add_handler(CallbackQueryHandler(admin_top_callback, pattern="^admin_top$"))
+    application.add_handler(CallbackQueryHandler(admin_broadcast_callback, pattern="^admin_broadcast$"))
+    application.add_handler(CallbackQueryHandler(admin_balance_callback, pattern="^admin_balance$"))
+    application.add_handler(CallbackQueryHandler(admin_search_callback, pattern="^admin_search$"))
+    application.add_handler(CallbackQueryHandler(admin_system_callback, pattern="^admin_system$"))
+    application.add_handler(CallbackQueryHandler(admin_promo_callback, pattern="^admin_promo$"))
+    application.add_handler(CallbackQueryHandler(admin_ban_callback, pattern="^admin_ban$"))
+    application.add_handler(CallbackQueryHandler(admin_backup_callback, pattern="^admin_backup$"))
+    application.add_handler(CallbackQueryHandler(admin_withdrawals_callback, pattern="^admin_withdrawals$"))
+    application.add_handler(CallbackQueryHandler(admin_play_callback, pattern="^admin_play$"))
+    application.add_handler(CallbackQueryHandler(admin_settings_callback, pattern="^admin_settings$"))
+    application.add_handler(CallbackQueryHandler(admin_exit_callback, pattern="^admin_exit$"))
+    application.add_handler(CallbackQueryHandler(admin_back_callback, pattern="^admin_back$"))
+    
+    # 📄 ОБРАБОТЧИКИ СООБЩЕНИЙ
     application.add_handler(MessageHandler(filters.Dice.ALL, handle_user_dice))
+    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_broadcast_message))
     
-    # ОБРАБОТЧИК РАССЫЛКИ
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_broadcast_message))
+    # 🚀 ЗАПУСК ВЕБ-СЕРВЕРА ДЛЯ RAILWAY
+    if os.environ.get('RAILWAY_ENVIRONMENT'):
+        Thread(target=run_flask).start()
     
+    # 🚀 ЗАПУСК БОТА
     print("🎰 NSource Casino Bot запущен!")
-    print("🎮 Доступные игры: 🎰 🎯 🎲 🎳 ⚽ 🏀")
-    print("💰 Система с изменяемой ставкой от 1 до 100000 ⭐!")
-    print("💸 Полная система вывода средств!")
-    print("🎰 Режимы слотов: обычные и 777 (только джекпот)!")
-    print("🔥 ОПТИМИЗИРОВАННАЯ СИСТЕМА: Серии побед с бонусами +10%/+25%/+50%!")
-    print("🎉 ОПТИМИЗИРОВАННЫЕ МЕГА-ВЫИГРЫШИ: x1.5-x5 с шансом 0.6%!")
-    print("🔄 ОПТИМИЗИРОВАННЫЕ ВОЗВРАТЫ: 2-10% при проигрыше во всех играх!")
-    print("⚽ ОПТИМИЗИРОВАННЫЙ ФУТБОЛ: 2 возврата + 3 гола с выигрышем!")
-    print("🏀 ОПТИМИЗИРОВАННЫЙ БАСКЕТБОЛ: 3 возврата + 2 броска с выигрышем!")
-    print("🏆 НОВАЯ СИСТЕМА: Недельные награды 1-3% от суммы ставок!")
-    print("👑 Скрытая админ-панель (только по коду)!")
-    print("⏱️ Оптимизированные задержки для каждой игры!")
     application.run_polling()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
