@@ -513,11 +513,19 @@ def calculate_win_bonuses(user_id: int, base_prize: float, bet: int, emoji: str,
     base_win_amount = base_prize * bet
     
     # 🔄 СИСТЕМА ВОЗВРАТОВ ПРИ ПРОИГРЫШЕ (только при is_win=False)
-    if not is_win and base_prize == 0:
+    if not is_win:
         refund_percent = random.uniform(REFUND_CONFIG["min_refund"], REFUND_CONFIG["max_refund"])
         refund_amount = round(bet * refund_percent, 1)
-        base_win_amount = refund_amount
-        bonus_messages.append(f"🔄 Возврат {refund_percent*100:.1f}% от ставки: {refund_amount} ⭐")
+        
+        # Если base_prize = 0 (полный проигрыш), заменяем на возврат
+        if base_prize == 0:
+            base_win_amount = refund_amount
+            bonus_messages.append(f"🔄 Возврат {refund_percent*100:.1f}% от ставки: {refund_amount} ⭐")
+        # Если base_prize > 0 (частичный возврат как в футболе/баскетболе), добавляем дополнительный возврат
+        else:
+            additional_refund = round(bet * (refund_percent * 0.5), 1)  # +50% к существующему возврату
+            base_win_amount += additional_refund
+            bonus_messages.append(f"🔄 Доп. возврат {refund_percent*50:.1f}%: +{additional_refund} ⭐")
     
     # 🔥 СИСТЕМА СЕРИЙ ПОБЕД (только при реальном выигрыше)
     if is_win and base_prize > 0:
@@ -1273,18 +1281,24 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if len(context.args) == 0:
+        await update.message.reply_text(
+            "🔐 Активация режима администратора\n\n"
+            "Использование: /admin <код>\n\n"
+            "Пример: /admin 1337"
+        )
         return
     
     code = context.args[0]
     if code == ADMIN_CODE:
         admin_mode[user_id] = True
+        save_data()
         await update.message.reply_text(
             "👑 РЕЖИМ АДМИНИСТРАТОРА АКТИВИРОВАН!\n\n"
             "✨ Теперь вам доступны все админ-команды.\n"
             "🎮 Используйте кнопки в профиле для быстрого доступа к админ-панели!"
         )
     else:
-        return
+        await update.message.reply_text("❌ Неверный код администратора!")
 
 # 🆕 КОМАНДА /admin help ДЛЯ АДМИНОВ
 async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1403,6 +1417,17 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(admin_text, reply_markup=reply_markup)
+
+async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    if not admin_mode.get(user_id, False):
+        await query.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    await admin_panel(update, context)
 
 # 📊 АДМИН СТАТИСТИКА
 async def admin_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2496,7 +2521,10 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     callback_data = query.data
     
-    if callback_data.startswith('admin_'):
+    if callback_data == 'admin_panel':
+        await admin_panel_callback(update, context)
+    
+    elif callback_data.startswith('admin_'):
         await handle_admin_callback_query(update, context)
     
     elif callback_data == 'withdraw':
