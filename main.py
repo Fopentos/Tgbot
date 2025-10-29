@@ -3343,11 +3343,7 @@ def main():
     )
     application.add_handler(custom_deposit_handler)
     
-    # Запуск автосохранения каждые 5 минут
-    job_queue = application.job_queue
-    job_queue.run_repeating(auto_save, interval=300, first=10)
-    
-    # Запуск бота
+    # Запуск бота (без JobQueue)
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
