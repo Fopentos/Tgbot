@@ -6,7 +6,7 @@ import asyncio
 import psutil
 from collections import defaultdict
 from telegram import Update, LabeledPrice, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters, PreCheckoutQueryHandler
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters, PreCheckoutQueryHandler, ConversationHandler
 
 # 🔧 КОНФИГУРАЦИЯ
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8378526693:AAFOwAb6pVp1GOE0tXZN4PDLFnD_TTT1djg")
@@ -16,6 +16,16 @@ ADMIN_CODE = os.environ.get("ADMIN_CODE", "1337")
 # 🎯 МИНИМАЛЬНАЯ И МАКСИМАЛЬНАЯ СТАВКА
 MIN_BET = 1
 MAX_BET = 100000
+
+# 💰 КОНФИГУРАЦИЯ КАСТОМНОГО ПОПОЛНЕНИЯ
+CUSTOM_DEPOSIT_CONFIG = {
+    "min_amount": 5,      # Минимальная сумма
+    "max_amount": 5000,   # Максимальная сумма  
+    "step": 1            # Шаг суммы
+}
+
+# Состояния для FSM кастомного пополнения
+WAITING_CUSTOM_AMOUNT, CONFIRM_CUSTOM_AMOUNT = range(2)
 
 # ⏱️ ВРЕМЯ АНИМАЦИИ ДЛЯ КАЖДОЙ ИГРЫ (в секундах)
 DICE_DELAYS = {
@@ -1407,7 +1417,7 @@ async def bet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("❌ Пожалуйста, введите корректное число")
 
-# 💰 СИСТЕМА ПОПОЛНЕНИЯ (ИСПРАВЛЕННАЯ)
+# 💰 СИСТЕМА ПОПОЛНЕНИЯ С КАСТОМНЫМИ СУММАМИ (ОБНОВЛЕННАЯ)
 async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -1447,6 +1457,8 @@ async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         ])
     
+    # Добавляем кнопку для кастомного пополнения
+    keyboard.append([InlineKeyboardButton("💎 Ввести свою сумму", callback_data="custom_deposit")])
     keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_profile")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1491,6 +1503,8 @@ async def deposit_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         ])
     
+    # Добавляем кнопку для кастомного пополнения
+    keyboard.append([InlineKeyboardButton("💎 Ввести свою сумму", callback_data="custom_deposit")])
     keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_profile")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1525,7 +1539,149 @@ async def handle_deposit_selection(update: Update, context: ContextTypes.DEFAULT
         start_parameter="nsource_casino"
     )
 
-# 💳 ОБРАБОТЧИКИ ПЛАТЕЖЕЙ
+# 🆕 ФУНКЦИИ ДЛЯ КАСТОМНОГО ПОПОЛНЕНИЯ
+async def custom_deposit_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    
+    is_banned, reason = await check_ban(user_id)
+    if is_banned:
+        await query.message.reply_text(
+            f"🚫 Вы забанены администратором.\n"
+            f"📝 Причина: {reason}\n\n"
+            f"Если вы считаете, что это ошибка, свяжитесь с администрацией."
+        )
+        return
+    
+    deposit_text = f"""
+💎 ПОПОЛНЕНИЕ ПРОИЗВОЛЬНОЙ СУММЫ
+
+💰 Диапазон пополнения: {CUSTOM_DEPOSIT_CONFIG['min_amount']} - {CUSTOM_DEPOSIT_CONFIG['max_amount']} ⭐
+💫 Курс: 1 реальная звезда = 1 ⭐
+
+📝 Введите сумму, на которую хотите пополнить баланс:
+    """
+    
+    keyboard = [
+        [InlineKeyboardButton("🔙 Назад", callback_data="deposit")]
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(deposit_text, reply_markup=reply_markup)
+    
+    return WAITING_CUSTOM_AMOUNT
+
+async def handle_custom_amount_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    is_banned, reason = await check_ban(user_id)
+    if is_banned:
+        await update.message.reply_text(
+            f"🚫 Вы забанены администратором.\n"
+            f"📝 Причина: {reason}\n\n"
+            f"Если вы считаете, что это ошибка, свяжитесь с администрацией."
+        )
+        return ConversationHandler.END
+    
+    try:
+        amount = int(update.message.text)
+        
+        if amount < CUSTOM_DEPOSIT_CONFIG['min_amount']:
+            await update.message.reply_text(
+                f"❌ Минимальная сумма пополнения: {CUSTOM_DEPOSIT_CONFIG['min_amount']} ⭐\n\n"
+                f"Пожалуйста, введите сумму от {CUSTOM_DEPOSIT_CONFIG['min_amount']} до {CUSTOM_DEPOSIT_CONFIG['max_amount']} ⭐:"
+            )
+            return WAITING_CUSTOM_AMOUNT
+            
+        if amount > CUSTOM_DEPOSIT_CONFIG['max_amount']:
+            await update.message.reply_text(
+                f"❌ Максимальная сумма пополнения: {CUSTOM_DEPOSIT_CONFIG['max_amount']} ⭐\n\n"
+                f"Пожалуйста, введите сумму от {CUSTOM_DEPOSIT_CONFIG['min_amount']} до {CUSTOM_DEPOSIT_CONFIG['max_amount']} ⭐:"
+            )
+            return WAITING_CUSTOM_AMOUNT
+        
+        current_balance = user_data[user_id]['game_balance']
+        new_balance = current_balance + amount
+        
+        confirm_text = f"""
+✅ ПОДТВЕРЖДЕНИЕ ПОПОЛНЕНИЯ
+
+💰 Сумма пополнения: {amount} ⭐
+💎 Текущий баланс: {round(current_balance, 1)} ⭐
+💫 Баланс после пополнения: {round(new_balance, 1)} ⭐
+
+💳 Стоимость: {amount} Telegram Stars
+        """
+        
+        keyboard = [
+            [InlineKeyboardButton("💳 Оплатить", callback_data=f"confirm_custom_{amount}")],
+            [InlineKeyboardButton("❌ Отмена", callback_data="cancel_custom_deposit")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(confirm_text, reply_markup=reply_markup)
+        
+        context.user_data['custom_amount'] = amount
+        return CONFIRM_CUSTOM_AMOUNT
+        
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Пожалуйста, введите корректное число!\n\n"
+            f"Диапазон: {CUSTOM_DEPOSIT_CONFIG['min_amount']} - {CUSTOM_DEPOSIT_CONFIG['max_amount']} ⭐"
+        )
+        return WAITING_CUSTOM_AMOUNT
+
+async def confirm_custom_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    amount = int(query.data.replace("confirm_custom_", ""))
+    
+    # Создаем динамический продукт для кастомной суммы
+    product_key = f"pack_custom_{amount}"
+    product_title = f"{amount} ⭐"
+    product_description = f"Пополнение баланса на {amount} ⭐"
+    
+    await context.bot.send_invoice(
+        chat_id=query.message.chat_id,
+        title=product_title,
+        description=product_description,
+        payload=product_key,
+        provider_token=PROVIDER_TOKEN,
+        currency="XTR",
+        prices=[LabeledPrice(product_title, amount)],
+        start_parameter="nsource_casino_custom"
+    )
+    
+    return ConversationHandler.END
+
+async def cancel_custom_deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    await query.edit_message_text(
+        "❌ Пополнение отменено.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("💰 К выбору суммы", callback_data="deposit")]
+        ])
+    )
+    
+    return ConversationHandler.END
+
+async def cancel_custom_deposit_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "❌ Пополнение отменено.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("💰 К выбору суммы", callback_data="deposit")]
+        ])
+    )
+    
+    return ConversationHandler.END
+
+# 💳 ОБРАБОТЧИКИ ПЛАТЕЖЕЙ (ОБНОВЛЕННЫЕ)
 async def pre_checkout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.pre_checkout_query
     await query.answer(ok=True)
@@ -1534,18 +1690,29 @@ async def successful_payment_handler(update: Update, context: ContextTypes.DEFAU
     payment = update.message.successful_payment
     user_id = update.effective_user.id
     product_key = payment.invoice_payload
-    product = PRODUCTS[product_key]
     
-    user_data[user_id]['game_balance'] += product["credits"]
-    user_data[user_id]['total_deposited'] += product["credits"]
-    user_data[user_id]['real_money_spent'] += product["price"]
+    # Обработка кастомных платежей
+    if product_key.startswith("pack_custom_"):
+        amount = int(product_key.replace("pack_custom_", ""))
+        credits = amount
+        product_title = f"{amount} ⭐"
+    else:
+        # Обработка стандартных продуктов
+        product = PRODUCTS[product_key]
+        amount = product["price"]
+        credits = product["credits"]
+        product_title = product["title"]
+    
+    user_data[user_id]['game_balance'] += credits
+    user_data[user_id]['total_deposited'] += credits
+    user_data[user_id]['real_money_spent'] += amount
     
     save_data()
     
     await update.message.reply_text(
         f"✅ Платеж успешен!\n\n"
-        f"💳 Оплачено: {product['price']} Stars\n"
-        f"💎 Зачислено: {product['credits']} ⭐\n"
+        f"💳 Оплачено: {amount} Stars\n"
+        f"💎 Зачислено: {credits} ⭐\n"
         f"💰 Баланс: {round(user_data[user_id]['game_balance'], 1)} ⭐\n\n"
         f"🎮 Приятной игры!"
     )
@@ -1875,6 +2042,11 @@ async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 • Конфигурация бота
 • Резервное копирование
 • Мониторинг системы
+
+📋 Система логов:
+• Просмотр действий
+• Экспорт данных
+• Поиск по логам
     """
     
     keyboard = [
@@ -2359,7 +2531,7 @@ async def addbalance_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         
     except ValueError:
-        await update.message.reply_text("❌ Пожалуйста, введите корректные числа!")
+        await update.message.reply_text("❌ Неверный формат чисел!")
 
 # 🆕 КОМАНДА УСТАНОВКИ БАЛАНСА
 async def setbalance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2385,48 +2557,15 @@ async def setbalance_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         user_data[target_id]['game_balance'] = amount
         save_data()
         
-        log_admin_action(user_id, "set_balance", target_id, f"старый: {old_balance}, новый: {amount} ⭐")
+        log_admin_action(user_id, "set_balance", target_id, f"было: {old_balance}, стало: {amount} ⭐")
         
         await update.message.reply_text(
             f"✅ Баланс пользователя {target_id} установлен на {amount} ⭐\n"
-            f"💰 Старый баланс: {round(old_balance, 1)} ⭐"
+            f"💰 Предыдущий баланс: {round(old_balance, 1)} ⭐"
         )
         
     except ValueError:
-        await update.message.reply_text("❌ Пожалуйста, введите корректные числа!")
-
-# 🆕 КОМАНДА СБРОСА БАЛАНСА
-async def resetbalance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    if not admin_mode.get(user_id, False):
-        await update.message.reply_text("❌ У вас нет прав администратора!")
-        return
-    
-    if len(context.args) < 1:
-        await update.message.reply_text("Использование: /resetbalance <user_id>")
-        return
-    
-    try:
-        target_id = int(context.args[0])
-        
-        if target_id not in user_data:
-            await update.message.reply_text("❌ Пользователь не найден!")
-            return
-        
-        old_balance = user_data[target_id]['game_balance']
-        user_data[target_id]['game_balance'] = 0
-        save_data()
-        
-        log_admin_action(user_id, "reset_balance", target_id, f"старый баланс: {old_balance} ⭐")
-        
-        await update.message.reply_text(
-            f"✅ Баланс пользователя {target_id} сброшен!\n"
-            f"💰 Старый баланс: {round(old_balance, 1)} ⭐"
-        )
-        
-    except ValueError:
-        await update.message.reply_text("❌ Пожалуйста, введите корректный ID!")
+        await update.message.reply_text("❌ Неверный формат чисел!")
 
 # 🆕 КОМАНДА СОЗДАНИЯ ПРОМОКОДА
 async def promo_create_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2437,20 +2576,14 @@ async def promo_create_command(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     
     if len(context.args) < 2:
-        await update.message.reply_text(
-            "🎟️ Создание промокода\n\n"
-            "Использование: /promo_create <сумма> <количество_использований>\n\n"
-            "Пример: /promo_create 100 50\n"
-            f"Минимальная сумма: {PROMO_CONFIG['min_amount']} ⭐\n"
-            f"Максимальная сумма: {PROMO_CONFIG['max_amount']} ⭐"
-        )
+        await update.message.reply_text("Использование: /promo_create <amount> <uses> [name]")
         return
     
     try:
         amount = int(context.args[0])
         uses = int(context.args[1])
         
-        if amount < PROMO_CONFIG['min_amount'] or amount > PROMO_CONFIG['max_amount']:
+        if amount < PROMO_CONFIG["min_amount"] or amount > PROMO_CONFIG["max_amount"]:
             await update.message.reply_text(
                 f"❌ Сумма должна быть от {PROMO_CONFIG['min_amount']} до {PROMO_CONFIG['max_amount']} ⭐"
             )
@@ -2460,27 +2593,37 @@ async def promo_create_command(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text("❌ Количество использований должно быть больше 0")
             return
         
-        if len(promo_codes) >= PROMO_CONFIG['max_active_promos']:
-            await update.message.reply_text(
-                f"❌ Достигнут лимит активных промокодов: {PROMO_CONFIG['max_active_promos']}"
-            )
-            return
+        code_name = context.args[2] if len(context.args) > 2 else None
         
-        promo_code = create_promo_code(amount, uses, user_id)
+        if code_name:
+            code = code_name.upper()
+            if code in promo_codes:
+                await update.message.reply_text("❌ Промокод с таким именем уже существует!")
+                return
+        else:
+            code = create_promo_code(amount, uses, user_id)
         
-        log_admin_action(user_id, "create_promo", None, f"код: {promo_code}, сумма: {amount}, использований: {uses}")
+        promo_codes[code] = {
+            'amount': amount,
+            'uses_left': uses,
+            'created_by': user_id,
+            'created_at': datetime.datetime.now().isoformat(),
+            'used_by': []
+        }
+        save_data()
+        
+        log_admin_action(user_id, "create_promo", None, f"код: {code}, сумма: {amount}, использований: {uses}")
         
         await update.message.reply_text(
-            f"✅ Промокод создан!\n\n"
-            f"🎟️ Код: {promo_code}\n"
+            f"🎟️ ПРОМОКОД СОЗДАН!\n\n"
+            f"💎 Код: {code}\n"
             f"💰 Сумма: {amount} ⭐\n"
             f"🎯 Использований: {uses}\n"
-            f"👤 Создал: {user_id}\n\n"
-            f"📝 Активация: /promo {promo_code}"
+            f"📅 Создан: {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}"
         )
         
     except ValueError:
-        await update.message.reply_text("❌ Пожалуйста, введите корректные числа!")
+        await update.message.reply_text("❌ Неверный формат чисел!")
 
 # 🆕 КОМАНДА СПИСКА ПРОМОКОДОВ
 async def promo_list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2491,21 +2634,25 @@ async def promo_list_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     
     if not promo_codes:
-        await update.message.reply_text("🎟️ Список промокодов пуст.")
+        await update.message.reply_text("📋 Список промокодов пуст")
         return
     
-    promo_list_text = "🎟️ Список промокодов:\n\n"
-    for code, promo in promo_codes.items():
-        promo_list_text += (
-            f"🔸 {code}\n"
-            f"   💰 Сумма: {promo['amount']} ⭐\n"
-            f"   🎯 Осталось использований: {promo['uses_left']}\n"
-            f"   👤 Создал: {promo['created_by']}\n"
-            f"   📅 Создан: {promo['created_at'][:10]}\n"
-            f"   👥 Использовали: {len(promo['used_by'])} пользователей\n\n"
+    promo_text = "🎟️ АКТИВНЫЕ ПРОМОКОДЫ:\n\n"
+    
+    for code, promo in list(promo_codes.items())[:15]:
+        promo_text += (
+            f"💎 Код: {code}\n"
+            f"💰 Сумма: {promo['amount']} ⭐\n"
+            f"🎯 Осталось: {promo['uses_left']}/{promo['uses_left'] + len(promo['used_by'])}\n"
+            f"👤 Создал: {promo['created_by']}\n"
+            f"📅 Дата: {promo['created_at'][:16]}\n"
+            f"────────────────────\n"
         )
     
-    await update.message.reply_text(promo_list_text)
+    if len(promo_codes) > 15:
+        promo_text += f"\n... и еще {len(promo_codes) - 15} промокодов"
+    
+    await update.message.reply_text(promo_text)
 
 # 🆕 КОМАНДА УДАЛЕНИЯ ПРОМОКОДА
 async def promo_delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2515,178 +2662,25 @@ async def promo_delete_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("❌ У вас нет прав администратора!")
         return
     
-    if len(context.args) < 1:
+    if len(context.args) != 1:
         await update.message.reply_text("Использование: /promo_delete <код>")
         return
     
-    promo_code = context.args[0].upper()
+    code = context.args[0].upper()
     
-    if promo_code not in promo_codes:
+    if code not in promo_codes:
         await update.message.reply_text("❌ Промокод не найден!")
         return
     
-    promo_data = promo_codes.pop(promo_code)
+    promo = promo_codes[code]
+    del promo_codes[code]
     save_data()
     
-    log_admin_action(user_id, "delete_promo", None, f"код: {promo_code}, сумма: {promo_data['amount']}")
+    log_admin_action(user_id, "delete_promo", None, f"код: {code}, сумма: {promo['amount']}, использований: {promo['uses_left']}")
     
-    await update.message.reply_text(
-        f"✅ Промокод {promo_code} удален!\n"
-        f"💰 Сумма: {promo_data['amount']} ⭐\n"
-        f"👥 Использований: {len(promo_data['used_by'])}"
-    )
+    await update.message.reply_text(f"✅ Промокод {code} удален!")
 
-# 🆕 КОМАНДА СТАТИСТИКИ ПОЛЬЗОВАТЕЛЯ
-async def userstats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    if not admin_mode.get(user_id, False):
-        await update.message.reply_text("❌ У вас нет прав администратора!")
-        return
-    
-    if len(context.args) < 1:
-        await update.message.reply_text("Использование: /userstats <user_id>")
-        return
-    
-    try:
-        target_id = int(context.args[0])
-        
-        if target_id not in user_data:
-            await update.message.reply_text("❌ Пользователь не найден!")
-            return
-        
-        data = user_data[target_id]
-        
-        win_rate = (data['total_wins'] / data['total_games'] * 100) if data['total_games'] > 0 else 0
-        
-        is_banned, ban_reason = await check_ban(target_id)
-        is_muted, mute_time = await check_mute(target_id)
-        is_vip, vip_time = await check_vip(target_id)
-        
-        user_stats_text = f"""
-📊 СТАТИСТИКА ПОЛЬЗОВАТЕЛЯ
-
-👤 ID: {target_id}
-📅 Регистрация: {data['registration_date'][:16]}
-🕒 Последняя активность: {data['last_activity'][:16] if 'last_activity' in data else 'Неизвестно'}
-
-🚫 Статус бана: {'Да' if is_banned else 'Нет'}
-🔇 Статус мута: {'Да' if is_muted else 'Нет'}
-⭐ VIP статус: {'Да' if is_vip else 'Нет'}
-
-💎 Финансы:
-💰 Баланс: {round(data['game_balance'], 1)} ⭐
-💳 Всего пополнено: {data['total_deposited']} ⭐
-💸 Потрачено реальных средств: {data['real_money_spent']} Stars
-
-🎮 Игровая статистика:
-🎯 Текущая ставка: {data['current_bet']} ⭐
-🎮 Всего игр: {data['total_games']}
-🏆 Побед: {data['total_wins']}
-📈 Винрейт: {win_rate:.1f}%
-🔥 Серия побед: {data['win_streak']}
-🏆 Макс. серия: {data['max_win_streak']}
-🎉 Мега-выигрышей: {data['mega_wins_count']}
-💫 Сумма мега-выигрышей: {round(data['total_mega_win_amount'], 1)} ⭐
-
-👥 Реферальная система:
-🎯 Реферальный код: {data['referral_code']}
-👥 Приглашено: {data['referrals_count']}
-💰 Заработано: {round(data['referral_earnings'], 1)} ⭐
-👤 Пригласил: {data['referral_by'] if data['referral_by'] else 'Нет'}
-
-⚙️ Дополнительно:
-🎰 Режим слотов: {data.get('slots_mode', 'normal')}
-🎟️ Использованных промокодов: {len(data['used_promo_codes'])}
-⚠️ Предупреждений: {len(data['warnings'])}
-        """
-        
-        await update.message.reply_text(user_stats_text)
-        
-    except ValueError:
-        await update.message.reply_text("❌ Пожалуйста, введите корректный ID!")
-
-# 🆕 СИСТЕМА НЕДЕЛЬНЫХ НАГРАД (ОБНОВЛЕННАЯ)
-def update_weekly_activity(user_id: int, bet_amount: float) -> dict:
-    activity = user_activity[user_id]
-    today = datetime.datetime.now().date()
-    
-    # Инициализация текущей недели
-    if not activity.get('current_week_start'):
-        activity['current_week_start'] = today.isoformat()
-    
-    week_start = datetime.datetime.fromisoformat(activity['current_week_start']).date()
-    days_since_week_start = (today - week_start).days
-    
-    # Если прошла неделя, сбрасываем статистику
-    if days_since_week_start >= 7:
-        activity['weekly_streak_days'] = 0
-        activity['weekly_total_bets'] = 0
-        activity['weekly_total_games'] = 0
-        activity['current_week_start'] = today.isoformat()
-    
-    # Обновление ежедневной статистики
-    if activity.get('last_activity_date') != today.isoformat():
-        # Проверка на пропуск дня
-        if activity.get('last_activity_date'):
-            last_date = datetime.datetime.fromisoformat(activity['last_activity_date']).date()
-            days_diff = (today - last_date).days
-            
-            if days_diff == 1:  # Последовательный день
-                activity['weekly_streak_days'] += 1
-            elif days_diff > 1:  # Пропущен день
-                activity['weekly_streak_days'] = 1
-        else:  # Первая активность
-            activity['weekly_streak_days'] = 1
-        
-        activity['daily_games_count'] = 0
-        activity['last_activity_date'] = today.isoformat()
-    
-    # Обновление счетчиков
-    activity['daily_games_count'] += 1
-    activity['weekly_total_games'] += 1
-    activity['weekly_total_bets'] += bet_amount
-    
-    # Проверка условий для недельной награды
-    if (activity['weekly_streak_days'] >= WEEKLY_BONUS_CONFIG["required_days"] and
-        activity['daily_games_count'] >= WEEKLY_BONUS_CONFIG["min_daily_games"] and
-        activity.get('last_weekly_bonus_date') != today.isoformat()):
-        
-        # Расчет награды
-        base_bonus = activity['weekly_total_bets'] * WEEKLY_BONUS_CONFIG["base_percent"]
-        
-        min_games = WEEKLY_BONUS_CONFIG["min_daily_games"] * WEEKLY_BONUS_CONFIG["required_days"]
-        extra_games = max(0, activity['weekly_total_games'] - min_games)
-        extra_bonus = activity['weekly_total_bets'] * extra_games * WEEKLY_BONUS_CONFIG["bonus_per_extra_game"]
-        max_extra = activity['weekly_total_bets'] * WEEKLY_BONUS_CONFIG["max_extra_bonus"]
-        extra_bonus = min(extra_bonus, max_extra)
-        
-        total_bonus = base_bonus + extra_bonus
-        
-        # Начисление бонуса
-        user_data[user_id]['game_balance'] += total_bonus
-        activity['last_weekly_bonus_date'] = today.isoformat()
-        
-        # Сброс недельной статистики
-        activity['weekly_streak_days'] = 0
-        activity['weekly_total_bets'] = 0
-        activity['weekly_total_games'] = 0
-        activity['current_week_start'] = today.isoformat()
-        
-        save_data()
-        
-        return {
-            'total_games': activity['weekly_total_games'],
-            'total_bets': activity['weekly_total_bets'],
-            'base_bonus': base_bonus,
-            'extra_bonus': extra_bonus,
-            'total_bonus': total_bonus
-        }
-    
-    save_data()
-    return None
-
-# 🆕 КОМАНДА ДЛЯ ПРОСМОТРА СТАТИСТИКИ БОТА
+# 🆕 КОМАНДА СТАТИСТИКИ
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -2720,7 +2714,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 📊 СТАТИСТИКА БОТА
 
 👥 ПОЛЬЗОВАТЕЛИ:
-• Всего пользователей: {total_users}
+• Всего: {total_users}
 • Активных сегодня: {active_today}
 • Новых за сегодня: {sum(1 for data in user_data.values() if datetime.datetime.fromisoformat(data['registration_date']).date() == today)}
 
@@ -2729,142 +2723,762 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • Всего пополнено: {round(total_deposited, 1)} ⭐
 • Средний депозит: {round(total_deposited/total_users, 1) if total_users > 0 else 0} ⭐
 
-🎮 ИГРОВАЯ АКТИВНОСТЬ:
+🎮 ИГРЫ:
 • Всего игр: {total_games}
 • Побед: {total_wins}
 • Винрейт: {win_rate:.1f}%
-• Средняя ставка: {round(sum(data['current_bet'] for data in user_data.values())/total_users, 1) if total_users > 0 else 0} ⭐
 
-⚙️ СИСТЕМНЫЕ ПОКАЗАТЕЛИ:
+⚙️ СИСТЕМА:
 • Промокодов: {len(promo_codes)}
 • Забанено: {len(banned_users)}
 • В муте: {len(muted_users)}
-• VIP пользователей: {len(vip_users)}
-• Реферальных связей: {sum(1 for data in user_data.values() if data['referral_by'])}
+• VIP: {len(vip_users)}
 """
     
     await update.message.reply_text(stats_text)
 
-# 🆕 КОМАНДА ДЛЯ РАССЫЛКИ СООБЩЕНИЙ
-async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# 🆕 КОМАНДА ВЫХОДА ИЗ АДМИНКИ
+async def admin_logout_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if admin_mode.get(user_id, False):
+        admin_mode[user_id] = False
+        save_data()
+        
+        log_admin_action(user_id, "admin_logout")
+        
+        await update.message.reply_text(
+            "🔓 РЕЖИМ АДМИНИСТРАТОРА ДЕАКТИВИРОВАН!\n\n"
+            "✨ Теперь вы в обычном режиме пользователя."
+        )
+    else:
+        await update.message.reply_text("❌ Вы и так не в режиме администратора!")
+
+# 🆕 КОМАНДА ПОИСКА ПОЛЬЗОВАТЕЛЯ
+async def searchid_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if not admin_mode.get(user_id, False):
         await update.message.reply_text("❌ У вас нет прав администратора!")
         return
     
-    if len(context.args) == 0:
-        await update.message.reply_text(
-            "📢 Система рассылки\n\n"
-            "Использование: /broadcast <сообщение>\n\n"
-            "Пример: /broadcast Важное обновление системы!"
-        )
+    if len(context.args) != 1:
+        await update.message.reply_text("Использование: /searchid <user_id>")
         return
     
-    message = ' '.join(context.args)
-    sent_count = 0
-    failed_count = 0
-    
-    for user_id in user_data.keys():
-        try:
-            await context.bot.send_message(chat_id=user_id, text=message)
-            sent_count += 1
-            await asyncio.sleep(0.05)  # Задержка чтобы избежать ограничений
-        except Exception as e:
-            failed_count += 1
-            print(f"Ошибка отправки пользователю {user_id}: {e}")
-    
-    log_admin_action(user_id, "broadcast", None, f"сообщение: {message[:50]}...")
-    
-    await update.message.reply_text(
-        f"📢 Рассылка завершена!\n\n"
-        f"✅ Успешно отправлено: {sent_count}\n"
-        f"❌ Не удалось отправить: {failed_count}\n"
-        f"👥 Всего пользователей: {len(user_data)}"
-    )
+    try:
+        target_id = int(context.args[0])
+        
+        if target_id not in user_data:
+            await update.message.reply_text("❌ Пользователь не найден!")
+            return
+        
+        data = user_data[target_id]
+        
+        win_rate = (data['total_wins'] / data['total_games'] * 100) if data['total_games'] > 0 else 0
+        
+        is_banned, ban_reason = await check_ban(target_id)
+        is_muted, mute_time = await check_mute(target_id)
+        is_vip, vip_time = await check_vip(target_id)
+        
+        user_info = f"""
+👤 ИНФОРМАЦИЯ О ПОЛЬЗОВАТЕЛЕ
 
-# 🆕 КОМАНДА ДЛЯ ВЫХОДА ИЗ АДМИНКИ
-async def admin_logout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+🆔 ID: {target_id}
+📅 Регистрация: {data['registration_date'][:16]}
+🕒 Последняя активность: {data['last_activity'][:16] if 'last_activity' in data else 'Никогда'}
+🎰 Режим слотов: {data.get('slots_mode', 'normal')}
+
+💎 БАЛАНС И СТАТИСТИКА:
+💰 Баланс: {round(data['game_balance'], 1)} ⭐
+🎯 Текущая ставка: {data['current_bet']} ⭐
+🎮 Всего игр: {data['total_games']}
+🏆 Побед: {data['total_wins']}
+📈 Винрейт: {win_rate:.1f}%
+💳 Пополнено: {data['total_deposited']} ⭐
+
+🔥 СИСТЕМА БОНУСОВ:
+📊 Серия побед: {data['win_streak']}
+🏆 Макс. серия: {data['max_win_streak']}
+🎉 Мега-выигрышей: {data['mega_wins_count']}
+💫 Сумма мега-выигрышей: {round(data['total_mega_win_amount'], 1)} ⭐
+
+👥 РЕФЕРАЛЬНАЯ СИСТЕМА:
+🎯 Код: {data['referral_code']}
+👥 Рефералов: {data['referrals_count']}
+💰 Заработано: {round(data['referral_earnings'], 1)} ⭐
+📥 Приглашен: {'Да' if data['referral_by'] else 'Нет'}
+
+🛡️ СТАТУСЫ:
+🚫 Бан: {'Да' if is_banned else 'Нет'} {f'({ban_reason})' if is_banned else ''}
+🔇 Мут: {'Да' if is_muted else 'Нет'} {f'({mute_time})' if is_muted else ''}
+⭐ VIP: {'Да' if is_vip else 'Нет'} {f'({vip_time})' if is_vip else ''}
+⚠️ Предупреждений: {len(user_warnings.get(target_id, []))}
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton("💰 Изменить баланс", callback_data=f"admin_edit_balance_{target_id}"),
+             InlineKeyboardButton("🛡️ Модерация", callback_data=f"admin_moderate_{target_id}")],
+            [InlineKeyboardButton("📊 Подробная статистика", callback_data=f"admin_detailed_stats_{target_id}")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(user_info, reply_markup=reply_markup)
+        
+    except ValueError:
+        await update.message.reply_text("❌ Неверный формат ID!")
+
+# 🆕 КОМАНДА СБРОСА БАЛАНСА
+async def resetbalance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
     
-    user_id = query.from_user.id
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
     
-    if admin_mode.get(user_id, False):
-        admin_mode[user_id] = False
+    if len(context.args) != 1:
+        await update.message.reply_text("Использование: /resetbalance <user_id>")
+        return
+    
+    try:
+        target_id = int(context.args[0])
+        
+        if target_id not in user_data:
+            await update.message.reply_text("❌ Пользователь не найден!")
+            return
+        
+        old_balance = user_data[target_id]['game_balance']
+        user_data[target_id]['game_balance'] = 0
         save_data()
-        log_admin_action(user_id, "admin_logout")
-        await query.edit_message_text(
-            "👋 Режим администратора деактивирован!\n\n"
-            "Теперь вы снова обычный пользователь."
+        
+        log_admin_action(user_id, "reset_balance", target_id, f"было: {old_balance}, стало: 0 ⭐")
+        
+        await update.message.reply_text(
+            f"✅ Баланс пользователя {target_id} сброшен до 0 ⭐\n"
+            f"💰 Предыдущий баланс: {round(old_balance, 1)} ⭐"
         )
-    else:
-        await query.edit_message_text("❌ Вы не в режиме администратора!")
+        
+    except ValueError:
+        await update.message.reply_text("❌ Неверный формат ID!")
 
-# 🎯 ОСНОВНАЯ ФУНКЦИЯ ДЛЯ ЗАПУСКА БОТА
+# 🆕 КОМАНДА ВЫДАЧИ ВАРНА
+async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if len(context.args) < 2:
+        await update.message.reply_text("Использование: /warn <user_id> <причина>")
+        return
+    
+    try:
+        target_id = int(context.args[0])
+        reason = ' '.join(context.args[1:])
+        
+        if target_id not in user_data:
+            await update.message.reply_text("❌ Пользователь не найден!")
+            return
+        
+        await warn_user(target_id, user_id, reason)
+        
+        warnings_count = len(user_warnings[target_id])
+        
+        await update.message.reply_text(
+            f"⚠️ Пользователю {target_id} выдано предупреждение!\n"
+            f"📝 Причина: {reason}\n"
+            f"📊 Всего предупреждений: {warnings_count}"
+        )
+        
+    except ValueError:
+        await update.message.reply_text("❌ Неверный формат ID!")
+
+# 🆕 КОМАНДА СНЯТИЯ ВАРНА
+async def unwarn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if len(context.args) < 1:
+        await update.message.reply_text("Использование: /unwarn <user_id> [индекс]")
+        return
+    
+    try:
+        target_id = int(context.args[0])
+        warning_index = int(context.args[1]) if len(context.args) > 1 else -1
+        
+        if target_id not in user_data:
+            await update.message.reply_text("❌ Пользователь не найден!")
+            return
+        
+        success = await unwarn_user(target_id, user_id, warning_index)
+        
+        if success:
+            warnings_count = len(user_warnings[target_id])
+            await update.message.reply_text(
+                f"✅ Предупреждение снято с пользователя {target_id}!\n"
+                f"📊 Осталось предупреждений: {warnings_count}"
+            )
+        else:
+            await update.message.reply_text("❌ Не удалось снять предупреждение!")
+        
+    except ValueError:
+        await update.message.reply_text("❌ Неверный формат ID или индекса!")
+
+# 🆕 КОМАНДА СПИСКА ВАРНОВ
+async def warnlist_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if len(context.args) != 1:
+        await update.message.reply_text("Использование: /warnlist <user_id>")
+        return
+    
+    try:
+        target_id = int(context.args[0])
+        
+        if target_id not in user_warnings or not user_warnings[target_id]:
+            await update.message.reply_text("⚠️ У пользователя нет предупреждений!")
+            return
+        
+        warnlist_text = f"⚠️ ПРЕДУПРЕЖДЕНИЯ ПОЛЬЗОВАТЕЛЯ {target_id}:\n\n"
+        
+        for i, warning in enumerate(user_warnings[target_id]):
+            warnlist_text += (
+                f"#{i+1} - {warning['reason']}\n"
+                f"👮 Выдал: {warning['warned_by']}\n"
+                f"📅 Дата: {warning['warned_at'][:16]}\n"
+                f"────────────────────\n"
+            )
+        
+        await update.message.reply_text(warnlist_text)
+        
+    except ValueError:
+        await update.message.reply_text("❌ Неверный формат ID!")
+
+# 🆕 КОМАНДА ОЧИСТКИ ВАРНОВ
+async def warnclear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if len(context.args) != 1:
+        await update.message.reply_text("Использование: /warnclear <user_id>")
+        return
+    
+    try:
+        target_id = int(context.args[0])
+        
+        if target_id not in user_warnings:
+            await update.message.reply_text("⚠️ У пользователя нет предупреждений!")
+            return
+        
+        warnings_count = len(user_warnings[target_id])
+        user_warnings[target_id] = []
+        user_data[target_id]['warnings'] = []
+        save_data()
+        
+        log_admin_action(user_id, "clear_warnings", target_id, f"снято предупреждений: {warnings_count}")
+        
+        await update.message.reply_text(
+            f"✅ Все предупреждения пользователя {target_id} сняты!\n"
+            f"📊 Снято предупреждений: {warnings_count}"
+        )
+        
+    except ValueError:
+        await update.message.reply_text("❌ Неверный формат ID!")
+
+# 🆕 КОМАНДА ВЫДАЧИ VIP
+async def vip_give_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if len(context.args) < 2:
+        await update.message.reply_text("Использование: /vip_give <user_id> <дни>")
+        return
+    
+    try:
+        target_id = int(context.args[0])
+        days = int(context.args[1])
+        
+        if target_id not in user_data:
+            await update.message.reply_text("❌ Пользователь не найден!")
+            return
+        
+        await give_vip(target_id, user_id, days)
+        
+        await update.message.reply_text(
+            f"⭐ Пользователю {target_id} выдан VIP статус!\n"
+            f"⏰ Срок: {days} дней\n"
+            f"📅 Истекает: {(datetime.datetime.now() + datetime.timedelta(days=days)).strftime('%d.%m.%Y %H:%M')}"
+        )
+        
+    except ValueError:
+        await update.message.reply_text("❌ Неверный формат ID или дней!")
+
+# 🆕 КОМАНДА СНЯТИЯ VIP
+async def vip_remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if len(context.args) != 1:
+        await update.message.reply_text("Использование: /vip_remove <user_id>")
+        return
+    
+    try:
+        target_id = int(context.args[0])
+        
+        success = await remove_vip(target_id, user_id)
+        
+        if success:
+            await update.message.reply_text(f"✅ VIP статус пользователя {target_id} снят!")
+        else:
+            await update.message.reply_text("❌ У пользователя нет VIP статуса!")
+        
+    except ValueError:
+        await update.message.reply_text("❌ Неверный формат ID!")
+
+# 🆕 КОМАНДА ИНФОРМАЦИИ О ПРОМОКОДЕ
+async def promo_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if len(context.args) != 1:
+        await update.message.reply_text("Использование: /promo_info <код>")
+        return
+    
+    code = context.args[0].upper()
+    
+    if code not in promo_codes:
+        await update.message.reply_text("❌ Промокод не найден!")
+        return
+    
+    promo = promo_codes[code]
+    
+    promo_info = f"""
+🎟️ ИНФОРМАЦИЯ О ПРОМОКОДЕ
+
+💎 Код: {code}
+💰 Сумма: {promo['amount']} ⭐
+🎯 Использований: {len(promo['used_by'])}/{promo['uses_left'] + len(promo['used_by'])}
+👤 Создал: {promo['created_by']}
+📅 Создан: {promo['created_at'][:16]}
+
+👥 ИСПОЛЬЗОВАЛИ:
+"""
+    
+    if promo['used_by']:
+        for i, user_id in enumerate(promo['used_by'][:10]):
+            promo_info += f"• {user_id}\n"
+        if len(promo['used_by']) > 10:
+            promo_info += f"... и еще {len(promo['used_by']) - 10} пользователей"
+    else:
+        promo_info += "• Пока никто не использовал"
+    
+    await update.message.reply_text(promo_info)
+
+# 🆕 КОМАНДА ЛОГОВ
+async def logs_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if not admin_logs:
+        await update.message.reply_text("📝 Логи действий пусты")
+        return
+    
+    recent_logs = admin_logs[-20:]
+    logs_text = "📝 ПОСЛЕДНИЕ ДЕЙСТВИЯ:\n\n"
+    
+    for log in reversed(recent_logs):
+        logs_text += f"👤 {log['admin_id']} - {log['action']}"
+        if log.get('target_id'):
+            logs_text += f" (ID: {log['target_id']})"
+        if log.get('details'):
+            logs_text += f" - {log['details']}"
+        logs_text += f"\n⏰ {log['timestamp'][:16]}\n━━━━━━━━━━━━━━━━━━━━\n"
+    
+    await update.message.reply_text(logs_text)
+
+# 🆕 КОМАНДА СОХРАНЕНИЯ
+async def save_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    save_data()
+    await update.message.reply_text("💾 Данные успешно сохранены!")
+
+# 🆕 КОМАНДА СИСТЕМЫ
+async def system_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    process = psutil.Process()
+    memory_info = process.memory_info()
+    cpu_percent = psutil.cpu_percent(interval=1)
+    memory_percent = psutil.virtual_memory().percent
+    disk_usage = psutil.disk_usage('/')
+    
+    system_text = f"""
+⚙️ СИСТЕМНАЯ ИНФОРМАЦИЯ
+
+📊 ПРОЦЕСС:
+• Память процесса: {memory_info.rss // 1024 // 1024} MB
+• Время работы: {datetime.datetime.now() - datetime.datetime.fromtimestamp(process.create_time())}
+• Потоков: {process.num_threads()}
+
+💻 СИСТЕМА:
+• CPU: {cpu_percent}%
+• Память: {memory_percent}%
+• Диск: {disk_usage.percent}%
+
+🗃️ ДАННЫЕ:
+• Пользователей: {len(user_data)}
+• Промокодов: {len(promo_codes)}
+• Забанено: {len(banned_users)}
+• Логов: {len(admin_logs)}
+"""
+    
+    await update.message.reply_text(system_text)
+
+# 🆕 КОМАНДА СТАТИСТИКИ ПОЛЬЗОВАТЕЛЯ
+async def userstats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if len(context.args) != 1:
+        await update.message.reply_text("Использование: /userstats <user_id>")
+        return
+    
+    try:
+        target_id = int(context.args[0])
+        
+        if target_id not in user_data:
+            await update.message.reply_text("❌ Пользователь не найден!")
+            return
+        
+        data = user_data[target_id]
+        activity = user_activity[target_id]
+        
+        win_rate = (data['total_wins'] / data['total_games'] * 100) if data['total_games'] > 0 else 0
+        
+        user_stats = f"""
+📊 ДЕТАЛЬНАЯ СТАТИСТИКА ПОЛЬЗОВАТЕЛЯ {target_id}
+
+💎 ОСНОВНОЕ:
+• Баланс: {round(data['game_balance'], 1)} ⭐
+• Ставка: {data['current_bet']} ⭐
+• Игр: {data['total_games']}
+• Побед: {data['total_wins']}
+• Винрейт: {win_rate:.1f}%
+• Пополнено: {data['total_deposited']} ⭐
+
+🔥 БОНУСЫ:
+• Серия побед: {data['win_streak']}
+• Макс. серия: {data['max_win_streak']}
+• Мега-выигрышей: {data['mega_wins_count']}
+• Сумма мега-выигрышей: {round(data['total_mega_win_amount'], 1)} ⭐
+
+📅 АКТИВНОСТЬ:
+• Серия дней: {activity['weekly_streak_days']}/7
+• Игр сегодня: {activity['daily_games_count']}/5
+• Игр за неделю: {activity['weekly_total_games']}
+• Сумма ставок: {round(activity['weekly_total_bets'], 1)} ⭐
+
+👥 РЕФЕРАЛЫ:
+• Код: {data['referral_code']}
+• Рефералов: {data['referrals_count']}
+• Заработано: {round(data['referral_earnings'], 1)} ⭐
+• Приглашен: {'Да' if data['referral_by'] else 'Нет'}
+"""
+        
+        await update.message.reply_text(user_stats)
+        
+    except ValueError:
+        await update.message.reply_text("❌ Неверный формат ID!")
+
+# 🆕 ОБНОВЛЕНИЕ НЕДЕЛЬНОЙ АКТИВНОСТИ
+def update_weekly_activity(user_id: int, bet_amount: float) -> dict:
+    today = datetime.datetime.now().date()
+    activity = user_activity[user_id]
+    
+    if activity['last_activity_date'] != today.isoformat():
+        if activity['last_activity_date']:
+            last_date = datetime.datetime.fromisoformat(activity['last_activity_date']).date()
+            if (today - last_date).days == 1:
+                activity['weekly_streak_days'] += 1
+            elif (today - last_date).days > 1:
+                activity['weekly_streak_days'] = 1
+        else:
+            activity['weekly_streak_days'] = 1
+        
+        activity['last_activity_date'] = today.isoformat()
+        activity['daily_games_count'] = 0
+    
+    activity['daily_games_count'] += 1
+    activity['weekly_total_games'] += 1
+    activity['weekly_total_bets'] += bet_amount
+    
+    if activity['weekly_streak_days'] >= WEEKLY_BONUS_CONFIG["required_days"]:
+        if activity['daily_games_count'] >= WEEKLY_BONUS_CONFIG["min_daily_games"]:
+            if activity.get('last_weekly_bonus_date') != today.isoformat():
+                base_bonus = activity['weekly_total_bets'] * WEEKLY_BONUS_CONFIG["base_percent"]
+                min_games = WEEKLY_BONUS_CONFIG["min_daily_games"] * WEEKLY_BONUS_CONFIG["required_days"]
+                extra_games = max(0, activity['weekly_total_games'] - min_games)
+                extra_bonus = activity['weekly_total_bets'] * extra_games * WEEKLY_BONUS_CONFIG["bonus_per_extra_game"]
+                max_extra = activity['weekly_total_bets'] * WEEKLY_BONUS_CONFIG["max_extra_bonus"]
+                extra_bonus = min(extra_bonus, max_extra)
+                total_bonus = base_bonus + extra_bonus
+                
+                user_data[user_id]['game_balance'] += total_bonus
+                activity['last_weekly_bonus_date'] = today.isoformat()
+                
+                save_data()
+                
+                return {
+                    'total_games': activity['weekly_total_games'],
+                    'total_bets': activity['weekly_total_bets'],
+                    'base_bonus': base_bonus,
+                    'extra_bonus': extra_bonus,
+                    'total_bonus': total_bonus
+                }
+    
+    save_data()
+    return None
+
+# 🆕 КОМАНДА МУТА
+async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if len(context.args) < 3:
+        await update.message.reply_text("Использование: /mute <user_id> <минуты> <причина>")
+        return
+    
+    try:
+        target_id = int(context.args[0])
+        minutes = int(context.args[1])
+        reason = ' '.join(context.args[2:])
+        
+        if target_id not in user_data:
+            await update.message.reply_text("❌ Пользователь не найден!")
+            return
+        
+        if target_id in admin_mode and admin_mode[target_id]:
+            await update.message.reply_text("❌ Нельзя замутить администратора!")
+            return
+        
+        await mute_user(target_id, user_id, minutes, reason)
+        
+        await update.message.reply_text(
+            f"🔇 Пользователь {target_id} замучен!\n"
+            f"⏰ Время: {minutes} минут\n"
+            f"📝 Причина: {reason}"
+        )
+        
+    except ValueError:
+        await update.message.reply_text("❌ Неверный формат ID или минут!")
+
+# 🆕 КОМАНДА РАЗМУТА
+async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if len(context.args) != 1:
+        await update.message.reply_text("Использование: /unmute <user_id>")
+        return
+    
+    try:
+        target_id = int(context.args[0])
+        
+        success = await unmute_user(target_id, user_id)
+        
+        if success:
+            await update.message.reply_text(f"🔊 Пользователь {target_id} размучен!")
+        else:
+            await update.message.reply_text("❌ Пользователь не найден в списке замученных!")
+        
+    except ValueError:
+        await update.message.reply_text("❌ Неверный формат ID!")
+
+# 🆕 КОМАНДА СПИСКА МУТОВ
+async def mutelist_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not admin_mode.get(user_id, False):
+        await update.message.reply_text("❌ У вас нет прав администратора!")
+        return
+    
+    if not muted_users:
+        await update.message.reply_text("📋 Список замученных пользователей пуст")
+        return
+    
+    mutelist_text = "🔇 ЗАМУЧЕННЫЕ ПОЛЬЗОВАТЕЛИ:\n\n"
+    
+    for muted_id, mute_data in list(muted_users.items())[:20]:
+        mute_until = datetime.datetime.fromisoformat(mute_data['muted_until'])
+        time_left = mute_until - datetime.datetime.now()
+        
+        mutelist_text += (
+            f"👤 ID: {muted_id}\n"
+            f"📝 Причина: {mute_data.get('reason', 'Не указана')}\n"
+            f"⏰ Осталось: {str(time_left).split('.')[0]}\n"
+            f"👮 Замутил: {mute_data.get('muted_by', 'Неизвестно')}\n"
+            f"📅 Дата: {mute_data.get('muted_at', 'Неизвестно')[:16]}\n"
+            f"────────────────────\n"
+        )
+    
+    if len(muted_users) > 20:
+        mutelist_text += f"\n... и еще {len(muted_users) - 20} пользователей"
+    
+    await update.message.reply_text(mutelist_text)
+
+# 🆕 СОЗДАНИЕ ДИНАМИЧЕСКОГО ПРОДУКТА ДЛЯ КАСТОМНОГО ПОПОЛНЕНИЯ
+def create_custom_product(amount: int) -> dict:
+    return {
+        "title": f"{amount} ⭐",
+        "description": f"Пополнение баланса на {amount} ⭐",
+        "price": amount,
+        "currency": "XTR",
+        "credits": amount
+    }
+
+# 🚀 ЗАПУСК БОТА
 def main():
     load_data()
     
-    app = Application.builder().token(BOT_TOKEN).build()
+    application = Application.builder().token(BOT_TOKEN).build()
     
-    # 📋 ОСНОВНЫЕ КОМАНДЫ
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("profile", profile))
-    app.add_handler(CommandHandler("activity", activity_command))
-    app.add_handler(CommandHandler("promo", promo_command))
-    app.add_handler(CommandHandler("bet", bet_command))
-    app.add_handler(CommandHandler("deposit", deposit_command))
-    app.add_handler(CommandHandler("withdraw", withdraw_command))
+    # ОСНОВНЫЕ КОМАНДЫ
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("profile", profile))
+    application.add_handler(CommandHandler("activity", activity_command))
+    application.add_handler(CommandHandler("promo", promo_command))
+    application.add_handler(CommandHandler("bet", bet_command))
+    application.add_handler(CommandHandler("deposit", deposit_command))
+    application.add_handler(CommandHandler("withdraw", withdraw_command))
     
-    # 👑 АДМИН КОМАНДЫ
-    app.add_handler(CommandHandler("admin", admin_command))
-    app.add_handler(CommandHandler("ban", ban_command))
-    app.add_handler(CommandHandler("unban", unban_command))
-    app.add_handler(CommandHandler("banlist", banlist_command))
-    app.add_handler(CommandHandler("addbalance", addbalance_command))
-    app.add_handler(CommandHandler("setbalance", setbalance_command))
-    app.add_handler(CommandHandler("resetbalance", resetbalance_command))
-    app.add_handler(CommandHandler("promo_create", promo_create_command))
-    app.add_handler(CommandHandler("promo_list", promo_list_command))
-    app.add_handler(CommandHandler("promo_delete", promo_delete_command))
-    app.add_handler(CommandHandler("userstats", userstats_command))
-    app.add_handler(CommandHandler("stats", stats_command))
-    app.add_handler(CommandHandler("broadcast", broadcast_command))
+    # АДМИН КОМАНДЫ
+    application.add_handler(CommandHandler("admin", admin_command))
+    application.add_handler(CommandHandler("admin_logout", admin_logout_command))
+    application.add_handler(CommandHandler("system", system_command))
+    application.add_handler(CommandHandler("searchid", searchid_command))
+    application.add_handler(CommandHandler("addbalance", addbalance_command))
+    application.add_handler(CommandHandler("setbalance", setbalance_command))
+    application.add_handler(CommandHandler("resetbalance", resetbalance_command))
+    application.add_handler(CommandHandler("userstats", userstats_command))
+    application.add_handler(CommandHandler("ban", ban_command))
+    application.add_handler(CommandHandler("unban", unban_command))
+    application.add_handler(CommandHandler("banlist", banlist_command))
+    application.add_handler(CommandHandler("mute", mute_command))
+    application.add_handler(CommandHandler("unmute", unmute_command))
+    application.add_handler(CommandHandler("mutelist", mutelist_command))
+    application.add_handler(CommandHandler("warn", warn_command))
+    application.add_handler(CommandHandler("unwarn", unwarn_command))
+    application.add_handler(CommandHandler("warnlist", warnlist_command))
+    application.add_handler(CommandHandler("warnclear", warnclear_command))
+    application.add_handler(CommandHandler("promo_create", promo_create_command))
+    application.add_handler(CommandHandler("promo_list", promo_list_command))
+    application.add_handler(CommandHandler("promo_delete", promo_delete_command))
+    application.add_handler(CommandHandler("promo_info", promo_info_command))
+    application.add_handler(CommandHandler("vip_give", vip_give_command))
+    application.add_handler(CommandHandler("vip_remove", vip_remove_command))
+    application.add_handler(CommandHandler("stats", stats_command))
+    application.add_handler(CommandHandler("logs", logs_command))
+    application.add_handler(CommandHandler("save", save_command))
     
-    # 💰 ОБРАБОТЧИКИ ПЛАТЕЖЕЙ
-    app.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
-    app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
+    # CALLBACK HANDLERS
+    application.add_handler(CallbackQueryHandler(profile, pattern="^back_to_profile$"))
+    application.add_handler(CallbackQueryHandler(play_games_callback, pattern="^play_games$"))
+    application.add_handler(CallbackQueryHandler(deposit_callback, pattern="^deposit$"))
+    application.add_handler(CallbackQueryHandler(withdraw_callback, pattern="^withdraw$"))
+    application.add_handler(CallbackQueryHandler(change_bet_callback, pattern="^change_bet$"))
+    application.add_handler(CallbackQueryHandler(referral_system_callback, pattern="^referral_system$"))
+    application.add_handler(CallbackQueryHandler(admin_panel_callback, pattern="^admin_panel$"))
+    application.add_handler(CallbackQueryHandler(admin_stats_callback, pattern="^admin_stats$"))
+    application.add_handler(CallbackQueryHandler(admin_users_callback, pattern="^admin_users$"))
+    application.add_handler(CallbackQueryHandler(admin_moderation_callback, pattern="^admin_moderation$"))
+    application.add_handler(CallbackQueryHandler(admin_finance_callback, pattern="^admin_finance$"))
+    application.add_handler(CallbackQueryHandler(admin_games_callback, pattern="^admin_games$"))
+    application.add_handler(CallbackQueryHandler(admin_promo_callback, pattern="^admin_promo$"))
+    application.add_handler(CallbackQueryHandler(admin_system_callback, pattern="^admin_system$"))
+    application.add_handler(CallbackQueryHandler(admin_logs_callback, pattern="^admin_logs$"))
     
-    # 🎮 ОБРАБОТЧИКИ DICE
-    app.add_handler(MessageHandler(filters.Dice.ALL, handle_user_dice))
+    # ИГРОВЫЕ CALLBACK HANDLERS
+    application.add_handler(CallbackQueryHandler(handle_game_selection, pattern="^play_"))
     
-    # 🔘 ОБРАБОТЧИКИ CALLBACK-QUERY
-    app.add_handler(CallbackQueryHandler(profile, pattern="^back_to_profile$"))
-    app.add_handler(CallbackQueryHandler(play_games_callback, pattern="^play_games$"))
-    app.add_handler(CallbackQueryHandler(handle_game_selection, pattern="^play_"))
-    app.add_handler(CallbackQueryHandler(change_bet_callback, pattern="^change_bet$"))
-    app.add_handler(CallbackQueryHandler(deposit_callback, pattern="^deposit$"))
-    app.add_handler(CallbackQueryHandler(handle_deposit_selection, pattern="^buy_"))
-    app.add_handler(CallbackQueryHandler(withdraw_callback, pattern="^withdraw$"))
-    app.add_handler(CallbackQueryHandler(handle_withdraw_selection, pattern="^withdraw_"))
-    app.add_handler(CallbackQueryHandler(confirm_withdraw, pattern="^confirm_withdraw$"))
-    app.add_handler(CallbackQueryHandler(referral_system_callback, pattern="^referral_system$"))
+    # ВЫВОД СРЕДСТВ CALLBACK HANDLERS
+    application.add_handler(CallbackQueryHandler(handle_withdraw_selection, pattern="^withdraw_"))
+    application.add_handler(CallbackQueryHandler(confirm_withdraw, pattern="^confirm_withdraw$"))
     
-    # 👑 АДМИН CALLBACK-QUERY
-    app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern="^admin_panel$"))
-    app.add_handler(CallbackQueryHandler(admin_stats_callback, pattern="^admin_stats$"))
-    app.add_handler(CallbackQueryHandler(admin_users_callback, pattern="^admin_users$"))
-    app.add_handler(CallbackQueryHandler(admin_moderation_callback, pattern="^admin_moderation$"))
-    app.add_handler(CallbackQueryHandler(admin_finance_callback, pattern="^admin_finance$"))
-    app.add_handler(CallbackQueryHandler(admin_games_callback, pattern="^admin_games$"))
-    app.add_handler(CallbackQueryHandler(admin_promo_callback, pattern="^admin_promo$"))
-    app.add_handler(CallbackQueryHandler(admin_system_callback, pattern="^admin_system$"))
-    app.add_handler(CallbackQueryHandler(admin_logs_callback, pattern="^admin_logs$"))
-    app.add_handler(CallbackQueryHandler(admin_logout_callback, pattern="^admin_logout$"))
+    # ПОПОЛНЕНИЕ CALLBACK HANDLERS
+    application.add_handler(CallbackQueryHandler(handle_deposit_selection, pattern="^buy_"))
     
+    # 🆕 CONVERSATION HANDLER ДЛЯ КАСТОМНОГО ПОПОЛНЕНИЯ
+    custom_deposit_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(custom_deposit_callback, pattern="^custom_deposit$")],
+        states={
+            WAITING_CUSTOM_AMOUNT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_amount_input),
+                CallbackQueryHandler(cancel_custom_deposit, pattern="^cancel_custom_deposit$")
+            ],
+            CONFIRM_CUSTOM_AMOUNT: [
+                CallbackQueryHandler(confirm_custom_payment_callback, pattern="^confirm_custom_"),
+                CallbackQueryHandler(cancel_custom_deposit, pattern="^cancel_custom_deposit$")
+            ]
+        },
+        fallbacks=[
+            CommandHandler("cancel", cancel_custom_deposit_message),
+            CallbackQueryHandler(cancel_custom_deposit, pattern="^cancel_custom_deposit$")
+        ]
+    )
+    application.add_handler(custom_deposit_handler)
+    
+    # ОБРАБОТЧИКИ ПЛАТЕЖЕЙ
+    application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
+    application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
+    
+    # ОБРАБОТЧИК DICE СООБЩЕНИЙ
+    application.add_handler(MessageHandler(filters.DICE, handle_user_dice))
+    
+    # ЗАПУСК БОТА
     print("🤖 Бот запущен и готов к работе!")
-    app.run_polling()
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
