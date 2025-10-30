@@ -25,8 +25,9 @@ CUSTOM_DEPOSIT_CONFIG = {
     "step": 1              # Шаг суммы
 }
 
-# Состояния для FSM кастомного пополнения
+# Состояния для FSM кастомного пополнения и вывода
 WAITING_CUSTOM_AMOUNT, CONFIRM_CUSTOM_AMOUNT = range(2)
+WAITING_WITHDRAW_AMOUNT, CONFIRM_WITHDRAW = range(2, 4)
 
 # ⏱️ ВРЕМЯ АНИМАЦИИ ДЛЯ КАЖДОЙ ИГРЫ (в секундах)
 DICE_DELAYS = {
